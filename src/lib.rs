@@ -1,8 +1,13 @@
+//! RFC 5545 in Rust
+#![warn(missing_docs)]
+
 use serde::{Deserialize, Serialize};
 
-/// As specified [in the RFC](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6)
+/// As specified [in the RFC Section 3.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6)
 mod components;
+/// Errors of the crate
 mod error;
+/// Sections 3.7 and 3.8 of the RFC
 mod properties;
 mod rrule;
 
@@ -13,6 +18,8 @@ pub use rrule::*;
 
 /// Alias for emails
 pub type Email = String;
+
+pub struct Pair<T>(pub T, pub T);
 
 /// A property can have attributes with which it is associated.  These
 /// "property parameters" contain meta-information about the property or
@@ -85,9 +92,19 @@ pub struct ICalendar {
     component: Component,
 }
 
-/// https://datatracker.ietf.org/doc/html/rfc5545#autoid-96
+/// This property defines the persistent, globally unique identifier for the
+/// calendar component.  The UID itself MUST be a globally unique identifier.
+/// The generator of the identifier MUST guarantee that the identifier is
+/// unique.  There are several algorithms that can be used to accomplish
+/// this.  The identifier is recommended to be the identical syntax to the
+/// [RFC5322] `Message-ID` header field.  In this case, the identifier would
+/// be an email message identifier prepended with the "UID:" label.
 ///
-/// UID:19960401T080045Z-4000F192713-0052@example.com
+/// Example:
+///
+/// > UID:19960401T080045Z-4000F192713-0052@example.com
+///
+/// [Section 3.8.4.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.7)
 #[derive(Serialize, Debug, Deserialize)]
 #[serde(transparent)]
 pub struct Uid(String);

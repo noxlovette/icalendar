@@ -1,7 +1,21 @@
-use crate::values::{Boolean, CalendarUserAddress};
+use crate::values::{Boolean, CalendarUserAddress, Text};
 use chrono_tz::Tz;
 pub use recurrence::*;
 
+/// Convenience wrapper around params
+#[derive(Debug, Default)]
+pub struct Params<T> {
+    inner: Option<T>,
+    iana: Vec<Text>,
+    non_standard: Vec<Text>,
+}
+
+/// All Data types as params
+pub enum DataTypes {
+    Binary,
+    Uri,
+    Text,
+}
 /// This parameter specifies a URI that points to an
 /// alternate representation for a textual property value.  A property
 /// specifying this parameter MUST also include a value that reflects
@@ -12,6 +26,8 @@ pub use recurrence::*;
 /// > allowed for this parameter, Content Identifier (CID) [RFC2392],
 /// > HTTP [RFC2616], and HTTPS [RFC2818] are the URI schemes most
 /// > commonly used by current implementations.
+///
+/// [Section 3.2.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.1)
 pub struct Altrep(String);
 
 /// This parameter can be specified on properties with a
@@ -24,6 +40,8 @@ pub struct Altrep(String);
 /// Example:
 ///
 /// > ATTENDEE;CUTYPE=GROUP:mailto:ietf-calsch@example.org
+///
+/// [Section 3.2.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.2)
 pub struct CommonName(String);
 
 /// This parameter can be specified on properties with a
@@ -37,6 +55,8 @@ pub struct CommonName(String);
 ///
 /// > ATTENDEE;DELEGATED-FROM="mailto:jsmith@example.com":mailto:jdoe@example.
 /// > com
+///
+/// [Section 3.2.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.4)
 pub struct Delegators(String);
 
 /// This parameter can be specified on properties with a
@@ -50,6 +70,8 @@ pub struct Delegators(String);
 ///
 /// > ATTENDEE;DELEGATED-TO="mailto:jdoe@example.com","mailto:jqpublic
 /// > @example.com":mailto:jsmith@example.com
+///
+/// [Section 3.2.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.5)
 pub struct Delegatees(String);
 
 /// This property parameter identifies the inline encoding
@@ -60,8 +82,12 @@ pub struct Delegatees(String);
 /// If the value type parameter is ";VALUE=BINARY", then the inline
 /// encoding parameter MUST be specified with the value
 /// ";ENCODING=BASE64".
+///
+/// [Section 3.2.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.7)
+#[derive(Debug, Default)]
 pub enum Encoding {
     Bit8,
+    #[default]
     Base64,
 }
 
@@ -78,6 +104,8 @@ pub enum Encoding {
 /// > ATTACH;FMTTYPE=application/msword:ftp://example.com/pub/docs/agenda.doc
 ///
 /// TODO: replace with MIME
+///
+/// [Section 3.2.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.8)
 pub struct Fmttype(String);
 
 /// This parameter specifies the free or busy time type.
@@ -96,6 +124,8 @@ pub struct Fmttype(String);
 /// Example:
 ///
 /// > FREEBUSY;FBTYPE=BUSY:19980415T133000Z/19980415T170000Z
+///
+/// [Section 3.2.9](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.9)
 pub enum Fbtype {
     Free,
     Busy,
@@ -120,7 +150,9 @@ pub enum Fbtype {
 /// > LOCATION;LANGUAGE=en:Germany
 /// >
 /// > LOCATION;LANGUAGE=no:Tyskland
-pub struct Language(langtag::LangTag);
+///
+/// [Section 3.2.10](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.10)
+pub struct Language(langtag::LanguageBuf);
 
 /// This parameter can be specified on properties with a
 /// CAL-ADDRESS value type.  The parameter identifies the groups or
@@ -129,6 +161,8 @@ pub struct Language(langtag::LangTag);
 /// quoted-string or a COMMA-separated list of calendar addresses,
 /// each in a quoted-string.  The individual calendar address
 /// parameter values MUST each be specified in a quoted-string.
+///
+/// [Section 3.2.11](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.11)
 pub struct Member(Vec<CalendarUserAddress>);
 
 /// This parameter can be specified on properties with a
@@ -137,6 +171,8 @@ pub struct Member(Vec<CalendarUserAddress>);
 /// property that allows this parameter, the default is INDIVIDUAL.
 /// Applications MUST treat x-name and iana-token values they don't
 /// recognize the same way as they would the UNKNOWN value.
+///
+/// [Section 3.2.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.3)
 #[derive(Debug, Default)]
 pub enum CalendarUserType {
     #[default]
@@ -163,6 +199,8 @@ pub enum CalendarUserType {
 /// Example:
 ///
 /// > ATTENDEE;PARTSTAT=DECLINED:mailto:jsmith@example.com
+///
+/// [Section 3.2.12](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.12)
 #[derive(Debug)]
 pub enum ParticipationStatus {
     Event(PartStatEvent),
@@ -181,6 +219,8 @@ pub enum ParticipationStatus {
 /// Example:
 ///
 /// > ATTENDEE;RSVP=TRUE:mailto:jsmith@example.com
+///
+/// [Section 3.2.17](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.17)
 pub struct Rsvp(Boolean);
 
 /// This parameter can be specified on properties with a
@@ -189,6 +229,8 @@ pub struct Rsvp(Boolean);
 /// property.  The parameter value MUST be a mailto URI as defined in
 /// [RFC2368].  The individual calendar address parameter values MUST
 /// each be specified in a quoted-string.
+///
+/// [Section 3.2.18](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.18)
 pub struct SentBy(CalendarUserAddress);
 
 /// This parameter MUST be specified on the "DTSTART",
@@ -239,6 +281,8 @@ pub struct SentBy(CalendarUserAddress);
 ///
 /// For more information, see the sections on the value types [DateType] and
 /// [Time].
+///
+/// [Section 3.2.19](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.19)
 #[derive(Debug, Clone)]
 pub struct TimeZoneIdentifier(Tz);
 
@@ -321,6 +365,8 @@ enum PartStatJournal {
 /// Example:
 ///
 /// > RELATED-TO;RELTYPE=SIBLING:19960401-080045-4000F192713@example.com
+///
+/// [Section 3.2.15](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.15)
 #[derive(Debug, Default)]
 pub enum RelationshipType {
     #[default]
@@ -343,6 +389,8 @@ pub enum RelationshipType {
 /// Example:
 ///
 /// > TRIGGER;RELATED=END:PT5M
+///
+/// [Section 3.2.14](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.14)
 #[derive(Debug, Default)]
 pub enum Related {
     #[default]
@@ -368,6 +416,8 @@ mod recurrence {
     /// Example:
     ///
     /// > RECURRENCE-ID;RANGE=THISANDFUTURE:19980401T133000Z
+    ///
+    /// [Section 3.2.13](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.13)
     pub enum Range {
         ThisAndFuture,
     }

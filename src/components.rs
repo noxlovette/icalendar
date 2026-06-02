@@ -8,7 +8,7 @@ pub enum Component {
 
 mod event {
     use crate::{
-        Email, Uid,
+        Classification, Email, Uid,
         params::Recur,
         values::{DateTime, Duration, Uri},
     };
@@ -154,7 +154,7 @@ mod event {
         /// is OPTIONAL; in any case, it MUST NOT occur
         /// more than once.
         dtstart: Option<DateTime>,
-        class: Option<EventClass>,
+        class: Option<Classification>,
         description: Option<String>,
         geo: Option<String>,
         last_mod: Option<DateTime>,
@@ -164,7 +164,7 @@ mod event {
         seq: Option<i32>,
         status: Option<String>,
         summary: Option<String>,
-        transp: Option<EventTransp>,
+        transp: Option<String>,
         url: Option<Uri>,
         recurid: Option<DateTime>,
         rrule: Recur,
@@ -182,21 +182,6 @@ mod event {
         related: Vec<String>,
         resources: Vec<String>,
         rdate: Vec<DateTime>,
-    }
-
-    #[derive(Debug, Default)]
-    pub enum EventClass {
-        #[default]
-        Public,
-        Private,
-        Confidential,
-    }
-
-    #[derive(Debug, Default)]
-    pub enum EventTransp {
-        #[default]
-        Opaque,
-        Transparent,
     }
 }
 

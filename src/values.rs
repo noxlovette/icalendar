@@ -34,6 +34,8 @@ use url::Url;
 /// A duration of 7 weeks would be:
 ///
 /// > P7W
+///
+/// [Section 3.3.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.6)
 pub type Duration = ChronoDuration;
 
 /// If the property permits, multiple "DATE-TIME" values
@@ -136,6 +138,8 @@ pub type Duration = ChronoDuration;
 /// > DTSTART:19970714T173000Z                  ; UTC time
 /// > DTSTART;TZID=America/New_York:19970714T133000 ; Local time and time ; zone
 /// > reference
+///
+/// [Section 3.3.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.5)
 #[derive(Debug, Clone)]
 pub enum DateTime {
     Floating(NaiveDate),
@@ -154,6 +158,8 @@ pub enum DateTime {
 /// Example:  The following represents July 14, 1997:
 ///
 /// > 19970714
+///
+/// [Section 3.3.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.4)
 pub type Date = NaiveDate;
 /// The PLUS SIGN character MUST be specified for positive
 /// UTC offsets (i.e., ahead of UTC).  The HYPHEN-MINUS character MUST
@@ -169,6 +175,8 @@ pub type Date = NaiveDate;
 /// > -0500
 /// >
 /// > +0100
+///
+/// [Section 3.3.14](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.14)
 pub type UtcOffset = FixedOffset;
 
 /// If the property permits, multiple "period" values are
@@ -184,6 +192,8 @@ pub type UtcOffset = FixedOffset;
 /// complete representation, basic format for the "DATE-TIME" start of
 /// the period, followed by a SOLIDUS character, followed by the
 /// [ISO.8601.2004](https://datatracker.ietf.org/doc/html/rfc5545#ref-ISO.8601.2004) basic format for "DURATION" of the period.
+///
+/// [Section 3.3.9](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.9)
 #[derive(Debug)]
 pub enum Period {
     StartEnd { start: DateTime, end: DateTime },
@@ -269,6 +279,8 @@ pub enum Period {
 /// > 133000Z
 /// >
 /// > TZID=America/New_York:083000
+///
+/// [Section 3.3.12](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.12)
 pub enum Time {
     Floating(NaiveTime),
     Zoned {
@@ -294,12 +306,16 @@ pub enum Time {
 /// > AAAAAAAAREQAAAAAAAAkQgAAAAAAAAMgAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 /// > AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 /// > AAAAAAAAAAAA
+///
+/// [Section 3.3.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.1)
 pub type Binary = Alphabet;
 
 /// These values are case-insensitive text.  No additional
 /// content value encoding (i.e., BACKSLASH character encoding, see
 /// [Section 3.3.11](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.11))
 /// is defined for this value type.
+///
+/// [Section 3.3.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.2)
 pub struct Boolean(bool);
 
 /// If the property permits, multiple TEXT values are
@@ -337,6 +353,9 @@ pub struct Boolean(bool);
 /// would be represented as:
 ///
 /// > Project XYZ Final Review\nConference Room - 3B\nCome Prepared.
+///
+/// [Section 3.3.11](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.11)
+#[derive(Debug)]
 pub struct Text(String);
 
 /// This value type might be used to reference binary
@@ -354,15 +373,21 @@ pub struct Text(String);
 ///
 /// Example:  The following is a URI for a network file:
 /// > http://example.com/my-report.txt
+///
+/// [Section 3.3.13](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.13)
 pub type Uri = Url;
 
 /// If the property permits, multiple "integer" values are
 /// specified by a COMMA-separated list of values.  The valid range
 /// for "integer" is -2147483648 to 2147483647.  If the sign is not
 /// specified, then the value is assumed to be positive.
+///
+/// [Section 3.3.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.8)
 pub type Integer = i32;
 /// If the property permits, multiple "float" values are
 /// specified by a COMMA-separated list of values.
+///
+/// [Section 3.3.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.7)
 pub type Float = f64;
 /// The value is a URI as defined by [RFC3986] or any other
 /// IANA-registered form for a URI.  When used to address an Internet
@@ -374,4 +399,6 @@ pub type Float = f64;
 /// Example:
 ///
 /// > mailto:jane_doe@example.com
+///
+/// [Section 3.3.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.3)
 pub type CalendarUserAddress = Url;
