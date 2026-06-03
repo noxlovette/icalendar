@@ -1,7 +1,6 @@
 //! RFC 5545 in Rust
 #![warn(missing_docs)]
 
-use serde::{Deserialize, Serialize};
 
 /// As specified [in the RFC Section 3.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6)
 mod components;
@@ -19,6 +18,15 @@ pub use rrule::*;
 /// Alias for emails
 pub type Email = String;
 
+/// A globally unique identifier for a calendar component.
+///
+/// Typically generated from the current timestamp and a random suffix so it is
+/// unique across calendar stores.  See [`Uid::new`] for the canonical
+/// constructor.
+pub struct Uid(pub String);
+
+/// A pair of two values of the same type, used for properties such as [`Geo`] that carry two
+/// coordinates.
 pub struct Pair<T>(pub T, pub T);
 
 /// A property can have attributes with which it is associated.  These
@@ -91,23 +99,6 @@ pub struct ICalendar {
     method: Option<String>,
     component: Component,
 }
-
-/// This property defines the persistent, globally unique identifier for the
-/// calendar component.  The UID itself MUST be a globally unique identifier.
-/// The generator of the identifier MUST guarantee that the identifier is
-/// unique.  There are several algorithms that can be used to accomplish
-/// this.  The identifier is recommended to be the identical syntax to the
-/// [RFC5322] `Message-ID` header field.  In this case, the identifier would
-/// be an email message identifier prepended with the "UID:" label.
-///
-/// Example:
-///
-/// > UID:19960401T080045Z-4000F192713-0052@example.com
-///
-/// [Section 3.8.4.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.7)
-#[derive(Serialize, Debug, Deserialize)]
-#[serde(transparent)]
-pub struct Uid(String);
 
 impl Uid {
     /// Creates a new UID

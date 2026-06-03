@@ -1,16 +1,24 @@
+/// The calendar component carried by an [`crate::ICalendar`] object.
+///
+/// Each variant corresponds to a component type defined in RFC 5545 Section 3.6.
 pub enum Component {
+    /// A scheduled event (`VEVENT`).
     VEvent(event::Eventc),
+    /// A to-do task (`VTODO`).
     VTodo(todo::Todoc),
+    /// A journal entry (`VJOURNAL`).
     VJournal(Journalc),
+    /// Free/busy time information (`VFREEBUSY`).
     VFreeBusy(FreeBusyc),
+    /// Time zone definition (`VTIMEZONE`).
     VTimezone(Timezonec),
 }
 
 mod event {
     use crate::{
-        Classification, Email, Uid,
-        params::Recur,
-        values::{DateTime, Duration, Uri},
+        Email, Uid,
+        descriptive::Classification,
+        values::{DateTime, Duration, Recur, Uri},
     };
 
     /// A "VEVENT" calendar component is a grouping of
@@ -188,6 +196,7 @@ mod event {
 mod todo {
     use crate::{Email, Uid, values::DateTime};
 
+
     pub struct Todoc {
         dtstamp: DateTime,
         uid: Uid,
@@ -208,6 +217,9 @@ mod todo {
         summary: Option<String>,
     }
 }
+/// A `VJOURNAL` calendar component (stub).
 pub struct Journalc;
+/// A `VFREEBUSY` calendar component (stub).
 pub struct FreeBusyc;
+/// A `VTIMEZONE` calendar component (stub).
 pub struct Timezonec;

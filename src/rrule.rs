@@ -21,6 +21,7 @@ pub struct RecurrenceSet {
     ///
     /// [More](https://datatracker.ietf.org/doc/html/rfc5545#autoid-93)
     pub recurrence_id: Option<DateTime<Utc>>,
+    /// The `SEQUENCE` number of the recurrence instance.
     pub sequence: i32,
     /// The "RANGE" parameter is used to specify the effective range of
     /// recurrence instances from the instance specified by the

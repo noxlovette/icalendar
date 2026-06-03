@@ -3,7 +3,37 @@ use base64::alphabet::Alphabet;
 use chrono::{
     DateTime as ChronoDateTime, Duration as ChronoDuration, FixedOffset, NaiveDate, NaiveTime, Utc,
 };
+pub use recurrence::Recur;
 use url::Url;
+
+/// The RFC 5545's helper
+#[derive(Debug, Clone)]
+pub enum DateOrDatetime {
+    /// A calendar date without a time component.
+    Date(Date),
+    /// A precise calendar date and time of day.
+    DateTime(DateTime),
+}
+
+/// Convenience union of [`Date`], [`DateTime`], and [`Period`] used by properties
+/// that accept any of those three value types (e.g., `FREEBUSY`).
+pub enum DateTimePeriod {
+    /// A calendar date without a time component.
+    Date(Date),
+    /// A precise calendar date and time of day.
+    DateTime(DateTime),
+    /// A span of time defined by start/end or start/duration.
+    Period(Period),
+}
+
+/// Convenience union of [`Duration`] and [`DateTime`] used by properties
+/// that accept either value type (e.g., `TRIGGER`).
+pub enum DateTimeDuration {
+    /// A positive span of time.
+    Duration(Duration),
+    /// A precise calendar date and time of day.
+    DateTime(DateTime),
+}
 
 /// If the property permits, multiple "duration" values are
 /// specified by a COMMA-separated list of values.  The format is
@@ -142,9 +172,17 @@ pub type Duration = ChronoDuration;
 /// [Section 3.3.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.5)
 #[derive(Debug, Clone)]
 pub enum DateTime {
+    /// Local (floating) time — not bound to any time zone.
     Floating(NaiveDate),
+    /// Absolute UTC time, identified by the `Z` suffix.
     Utc(ChronoDateTime<Utc>),
-    Timezone { dt: Date, tzid: TimeZoneIdentifier },
+    /// Local time anchored to a specific time zone via a TZID reference.
+    Timezone {
+        /// The local date.
+        dt: Date,
+        /// The VTIMEZONE identifier that gives the offset context.
+        tzid: TimeZoneIdentifier,
+    },
 }
 
 /// If the property permits, multiple "date" values are
@@ -196,8 +234,20 @@ pub type UtcOffset = FixedOffset;
 /// [Section 3.3.9](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.9)
 #[derive(Debug)]
 pub enum Period {
-    StartEnd { start: DateTime, end: DateTime },
-    Duration { start: DateTime, duration: Duration },
+    /// Period defined by an explicit start and end date-time.
+    StartEnd {
+        /// Inclusive start of the period.
+        start: DateTime,
+        /// Exclusive end of the period; MUST be after `start`.
+        end: DateTime,
+    },
+    /// Period defined by a start date-time and a positive duration.
+    Duration {
+        /// Start of the period.
+        start: DateTime,
+        /// Length of the period.
+        duration: Duration,
+    },
 }
 
 /// If the property permits, multiple "time" values are
@@ -282,9 +332,13 @@ pub enum Period {
 ///
 /// [Section 3.3.12](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.12)
 pub enum Time {
+    /// Local (floating) time — not bound to any time zone.
     Floating(NaiveTime),
+    /// Local time anchored to a specific time zone via a TZID reference.
     Zoned {
+        /// The clock time.
         time: NaiveTime,
+        /// The VTIMEZONE identifier that gives the offset context.
         tzid: TimeZoneIdentifier,
     },
 }
@@ -402,3 +456,238 @@ pub type Float = f64;
 ///
 /// [Section 3.3.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.3)
 pub type CalendarUserAddress = Url;
+
+mod recurrence {
+    use super::DateOrDatetime;
+
+    /// Enforces 0 to 60
+    #[derive(Debug, Clone)]
+    struct Seconds(u8);
+    /// 0 to 59
+    #[derive(Debug, Clone)]
+    struct Minutes(u8);
+    /// 0 to 23
+    #[derive(Debug, Clone)]
+    struct Hour(u8);
+    #[derive(Debug, Clone)]
+    struct WeekNum(i8);
+
+    /// 1 to 53, Ordinal of the week
+    struct OrdWk(u8);
+    #[derive(Debug, Clone)]
+    struct WeekdayNum {
+        ordinal: Option<i8>,
+        weekday: Weekday,
+    }
+    /// 1 to 12
+    #[derive(Debug, Clone)]
+    struct MonthNum(u8);
+    /// 1 to 31, Ordinal of month day
+    struct OrdMoDay(u8);
+    #[derive(Debug, Clone)]
+    struct MonthDayNum(i8);
+    /// 1 to 366
+    struct OrdYrDay(u16);
+    #[derive(Debug, Clone)]
+    struct YearDayNum(i16);
+    type SetPosDay = YearDayNum;
+
+    /// Day of the week
+    #[derive(Debug, Clone, Default)]
+    enum Weekday {
+        Su,
+        #[default]
+        Mo,
+        Tu,
+        We,
+        Th,
+        Fr,
+        Sa,
+    }
+
+    /// This value type is a structured value consisting of a
+    /// list of one or more recurrence grammar parts.  Each rule part is
+    /// defined by a NAME=VALUE pair.  The rule parts are separated from
+    /// each other by the SEMICOLON character.  The rule parts are not
+    /// ordered in any particular sequence.  Individual rule parts MUST
+    /// only be specified once.  Compliant applications MUST accept rule
+    /// parts ordered in any sequence, but to ensure backward
+    /// compatibility with applications that pre-date this revision of
+    /// iCalendar the FREQ rule part MUST be the first rule part specified
+    /// in a RECUR value.
+    ///
+    /// Recurrence rules may generate recurrence instances with an invalid
+    /// date (e.g., February 30) or nonexistent local time (e.g., 1:30 AM
+    /// on a day where the local time is moved forward by an hour at 1:00
+    /// AM).  Such recurrence instances MUST be ignored and MUST NOT be
+    /// counted as part of the recurrence set.
+    ///
+    /// Information, not contained in the rule, necessary to determine the
+    /// various recurrence instance start time and dates are derived from
+    /// the Start Time ("DTSTART") component attribute.  For example,
+    /// "FREQ=YEARLY;BYMONTH=1" doesn't specify a specific day within the
+    /// month or a time.  This information would be the same as what is
+    /// specified for "DTSTART".
+    ///
+    /// [More](https://datatracker.ietf.org/doc/html/rfc5545#autoid-42)
+    #[derive(Debug, Clone, Default)]
+    pub struct Recur {
+        /// The FREQ rule part identifies the type of recurrence rule. This
+        /// rule part MUST be specified in the recurrence rule.  Valid values
+        /// include SECONDLY, to specify repeating events based on an interval
+        /// of a second or more; MINUTELY, to specify repeating events based
+        /// on an interval of a minute or more; HOURLY, to specify repeating
+        /// events based on an interval of an hour or more; DAILY, to specify
+        /// repeating events based on an interval of a day or more; WEEKLY, to
+        /// specify repeating events based on an interval of a week or more;
+        /// MONTHLY, to specify repeating events based on an interval of a
+        /// month or more; and YEARLY, to specify repeating events based on an
+        /// interval of a year or more.
+        freq: Frequency,
+        /// The UNTIL rule part defines a DATE or DATE-TIME value that bounds
+        /// the recurrence rule in an inclusive manner.  If the value
+        /// specified by UNTIL is synchronized with the specified recurrence,
+        /// this DATE or DATE-TIME becomes the last instance of the
+        /// recurrence.  The value of the UNTIL rule part MUST have the same
+        /// value type as the "DTSTART" property.  Furthermore, if the
+        /// "DTSTART" property is specified as a date with local time, then
+        /// the UNTIL rule part MUST also be specified as a date with local
+        /// time.  If the "DTSTART" property is specified as a date with UTC
+        /// time or a date with local time and time zone reference, then the
+        /// UNTIL rule part MUST be specified as a date with UTC time.  In the
+        /// case of the "STANDARD" and "DAYLIGHT" sub-components the UNTIL
+        /// rule part MUST always be specified as a date with UTC time.  If
+        /// specified as a DATE-TIME value, then it MUST be specified in a UTC
+        /// time format.  If not present, and the COUNT rule part is also not
+        /// present, the "RRULE" is considered to repeat forever.
+        until: Option<DateOrDatetime>,
+        /// The COUNT rule part defines the number of occurrences at which to
+        /// range-bound the recurrence.  The "DTSTART" property value always
+        /// counts as the first occurrence.
+        count: Option<i32>,
+        /// The INTERVAL rule part contains a positive integer representing at
+        /// which intervals the recurrence rule repeats.  The default value is
+        /// "1", meaning every second for a SECONDLY rule, every minute for a
+        /// MINUTELY rule, every hour for an HOURLY rule, every day for a
+        /// DAILY rule, every week for a WEEKLY rule, every month for a
+        /// MONTHLY rule, and every year for a YEARLY rule.  For example,
+        /// within a DAILY rule, a value of "8" means every eight days.
+        interval: Option<i32>,
+        /// The BYSECOND rule part specifies a COMMA-separated list of seconds
+        /// a minute.  Valid values are 0 to 60.  The BYMINUTE rule
+        /// specifies a COMMA-separated list of minutes within an hour.
+        /// values are 0 to 59.  The BYHOUR rule part specifies a COMMA-
+        /// list of hours of the day.  Valid values are 0 to 23.
+        /// BYSECOND, BYMINUTE and BYHOUR rule parts MUST NOT be specified
+        /// the associated "DTSTART" property has a DATE value type.
+        /// rule parts MUST be ignored in RECUR value that violate the
+        /// requirement (e.g., generated by applications that pre-date
+        /// revision of iCalendar).
+        by_second: Vec<Seconds>,
+        by_minute: Vec<Minutes>,
+        by_hour: Vec<Hour>,
+        /// The BYDAY rule part specifies a COMMA-separated list of days of
+        /// week; SU indicates Sunday; MO indicates Monday; TU indicates
+        /// Tuesday; WE indicates Wednesday; TH indicates Thursday; FR
+        /// Friday; and SA indicates Saturday.
+        ///
+        /// Each BYDAY value can also be preceded by a positive (+n) or
+        /// negative (-n) integer.  If present, this indicates the nth
+        /// occurrence of a specific day within the MONTHLY or YEARLY "RRULE".
+        ///
+        /// For example, within a MONTHLY rule, +1MO (or simply 1MO)
+        /// represents the first Monday within the month, whereas -1MO
+        /// represents the last Monday of the month.  The numeric value in a
+        /// BYDAY rule part with the FREQ rule part set to YEARLY corresponds
+        /// to an offset within the month when the BYMONTH rule part is
+        /// present, and corresponds to an offset within the year when the
+        /// BYWEEKNO or BYMONTH rule parts are present.  If an integer
+        /// modifier is not present, it means all days of this type within the
+        /// specified frequency.  For example, within a MONTHLY rule, MO
+        /// represents all Mondays within the month.  The BYDAY rule part MUST
+        /// NOT be specified with a numeric value when the FREQ rule part is
+        /// not set to MONTHLY or YEARLY.  Furthermore, the BYDAY rule part
+        /// MUST NOT be specified with a numeric value with the FREQ rule part
+        /// set to YEARLY when the BYWEEKNO rule part is specified.
+        by_day: Vec<WeekdayNum>,
+        /// The BYMONTHDAY rule part specifies a COMMA-separated list of days
+        /// of the month.  Valid values are 1 to 31 or -31 to -1.  For
+        /// example, -10 represents the tenth to the last day of the month.
+        /// The BYMONTHDAY rule part MUST NOT be specified when the FREQ rule
+        /// part is set to WEEKLY.
+        by_month_day: Vec<MonthDayNum>,
+        /// The BYYEARDAY rule part specifies a COMMA-separated list of days
+        /// of the year.  Valid values are 1 to 366 or -366 to -1.  For
+        /// example, -1 represents the last day of the year (December 31st)
+        /// and -306 represents the 306th to the last day of the year (March
+        /// 1st).  The BYYEARDAY rule part MUST NOT be specified when the FREQ
+        /// rule part is set to DAILY, WEEKLY, or MONTHLY.
+        by_year_day: Vec<YearDayNum>,
+        /// The BYWEEKNO rule part specifies a COMMA-separated list of
+        /// ordinals specifying weeks of the year.  Valid values are 1 to 53
+        /// or -53 to -1.  This corresponds to weeks according to week
+        /// numbering as defined in [ISO.8601.2004].  A week is defined as a
+        /// seven day period, starting on the day of the week defined to be
+        /// the week start (see WKST).  Week number one of the calendar year
+        /// is the first week that contains at least four (4) days in that
+        /// calendar year.  This rule part MUST NOT be used when the FREQ rule
+        /// part is set to anything other than YEARLY.  For example, 3
+        /// represents the third week of the year.
+        ///
+        /// > Note: Assuming a Monday week start, week 53 can only occur when
+        /// > Thursday is January 1 or if it is a leap year and Wednesday is
+        /// > January 1.
+        by_week_no: Vec<WeekNum>,
+        /// The BYMONTH rule part specifies a COMMA-separated list of months
+        /// of the year.  Valid values are 1 to 12.
+        by_month: Vec<MonthNum>,
+
+        /// The BYSETPOS rule part specifies a COMMA-separated list of values
+        /// that corresponds to the nth occurrence within the set of
+        /// recurrence instances specified by the rule.  BYSETPOS operates on
+        /// a set of recurrence instances in one interval of the recurrence
+        /// rule.  For example, in a WEEKLY rule, the interval would be one
+        /// week A set of recurrence instances starts at the beginning of the
+        /// interval defined by the FREQ rule part.  Valid values are 1 to 366
+        /// or -366 to -1.  It MUST only be used in conjunction with another
+        /// BYxxx rule part.  For example "the last work day of the month"
+        /// could be represented as:
+        ///
+        /// FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1
+        by_set_pos: Vec<SetPosDay>,
+        /// The WKST rule part specifies the day on which the workweek starts.
+        /// Valid values are MO, TU, WE, TH, FR, SA, and SU.  This is
+        /// significant when a WEEKLY "RRULE" has an interval greater
+        /// than 1, and a BYDAY rule part is specified. This is also
+        /// significant when in a YEARLY "RRULE" when a BYWEEKNO rule
+        /// part is specified. The default value is MO.
+        wkst: Option<Weekday>,
+    }
+
+    /// The FREQ rule part identifies the type of recurrence rule. This
+    /// rule part MUST be specified in the recurrence rule.  Valid values
+    /// include SECONDLY, to specify repeating events based on an interval
+    /// of a second or more; MINUTELY, to specify repeating events based
+    /// on an interval of a minute or more; HOURLY, to specify repeating
+    /// events based on an interval of an hour or more; DAILY, to specify
+    /// repeating events based on an interval of a day or more; WEEKLY, to
+    /// specify repeating events based on an interval of a week or more;
+    /// MONTHLY, to specify repeating events based on an interval of a
+    /// month or more; and YEARLY, to specify repeating events based on an
+    /// interval of a year or more.
+    #[derive(Debug, Clone, Default)]
+    enum Frequency {
+        Secondly,
+        Minutely,
+        Hourly,
+        /// Every N days.
+        Daily,
+        /// Every N weeks.
+        #[default]
+        Weekly,
+        /// Every N months.
+        Monthly,
+        /// Every N years.
+        Yearly,
+    }
+}
