@@ -196,7 +196,6 @@ mod event {
 mod todo {
     use crate::{Email, Uid, values::DateTime};
 
-
     pub struct Todoc {
         dtstamp: DateTime,
         uid: Uid,

@@ -1,6 +1,20 @@
-use crate::values::{Boolean, CalendarUserAddress, Text, Uri};
-use chrono_tz::Tz;
 pub use crate::values::Recur;
+use crate::{
+    ParseError, ParseResult,
+    internal::{match_name, split_once, strip_quoted_string},
+    values::{Boolean, CalendarUserAddress, Text, Uri},
+};
+use bytes::Bytes;
+use chrono_tz::Tz;
+use std::io::Write;
+
+/// This trait defines a parameter as a functional entity
+pub trait Parameter: Sized {
+    /// Writes the param as output in bytes
+    fn write(&self, w: impl Write) -> ParseResult<()>;
+    /// Parses anything that implements Read and returns the parsed parameter
+    fn parse(b: Bytes) -> ParseResult<Self>;
+}
 
 /// Convenience wrapper around params
 #[derive(Debug, Default)]
@@ -66,9 +80,9 @@ pub enum DataTypes {
     /// A UTC offset (e.g. `-0500`).
     UtcOffset,
     /// A non-standard `X-` prefixed type name.
-    XName(String),
+    XName(Text),
     /// An IANA-registered type name.
-    Iana(String),
+    Iana(Text),
 }
 /// This parameter specifies a URI that points to an
 /// alternate representation for a textual property value.  A property
@@ -82,7 +96,7 @@ pub enum DataTypes {
 /// > commonly used by current implementations.
 ///
 /// [Section 3.2.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.1)
-pub struct Altrep(String);
+pub struct Altrep(Text);
 
 /// This parameter can be specified on properties with a
 /// CAL-ADDRESS value type.  The parameter specifies the common name
@@ -96,7 +110,7 @@ pub struct Altrep(String);
 /// > ATTENDEE;CUTYPE=GROUP:mailto:ietf-calsch@example.org
 ///
 /// [Section 3.2.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.2)
-pub struct CommonName(String);
+pub struct CommonName(Text);
 
 /// This parameter can be specified on properties with a
 /// CAL-ADDRESS value type.  This parameter specifies those calendar
@@ -111,7 +125,7 @@ pub struct CommonName(String);
 /// > com
 ///
 /// [Section 3.2.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.4)
-pub struct Delegators(String);
+pub struct Delegators(Text);
 
 /// This parameter can be specified on properties with a
 /// CAL-ADDRESS value type.  This parameter specifies those calendar
@@ -126,7 +140,7 @@ pub struct Delegators(String);
 /// > @example.com":mailto:jsmith@example.com
 ///
 /// [Section 3.2.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.5)
-pub struct Delegatees(String);
+pub struct Delegatees(Text);
 
 /// This parameter specifies a reference to a directory entry associated with
 /// the calendar user specified by the property.  The parameter value is a
@@ -137,7 +151,22 @@ pub struct Delegatees(String);
 /// > ORGANIZER;DIR="ldap://example.com:6666/o=ABC%20Industries,c=US???(cn=Jim%20Dolittle)":mailto:jimdo@example.com
 ///
 /// [Section 3.2.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.6)
+#[derive(Debug)]
 pub struct DirectoryEntryReference(Uri);
+
+impl Parameter for DirectoryEntryReference {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"DIR")?;
+
+        Ok(Self(url::Url::parse(str::from_utf8(
+            strip_quoted_string(v)?,
+        )?)?))
+    }
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
 
 /// This property parameter identifies the inline encoding
 /// used in a property value.  The default encoding is "8BIT",
@@ -158,6 +187,30 @@ pub enum Encoding {
     Base64,
 }
 
+impl Parameter for Encoding {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"ENCODING")?;
+
+        let r = match v {
+            b"BASE64" => Self::Base64,
+            b"8BIT" => Self::Bit8,
+            _ => {
+                return Err(ParseError::Parameter {
+                    expected: "BASE64 or 8BIT".into(),
+                    received: std::str::from_utf8(b.as_ref()).ok().map(|s| s.into()),
+                });
+            }
+        };
+
+        Ok(r)
+    }
+
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
 /// This parameter can be specified on properties that are
 /// used to reference an object.  The parameter specifies the media
 /// type [RFC4288] of the referenced object.  For example, on the
@@ -173,7 +226,7 @@ pub enum Encoding {
 /// TODO: replace with MIME
 ///
 /// [Section 3.2.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.8)
-pub struct Fmttype(String);
+pub struct Fmttype(Text);
 
 /// This parameter specifies the free or busy time type.
 /// The value FREE indicates that the time interval is free for
@@ -258,9 +311,9 @@ pub enum CalendarUserType {
     /// The type is unknown.
     Unknown,
     /// A non-standard `X-` prefixed type.
-    XType(String),
+    XType(Text),
     /// An IANA-registered type.
-    IanaToken(String),
+    IanaToken(Text),
 }
 
 /// This parameter can be specified on properties with a
@@ -392,9 +445,9 @@ pub enum ParticipationRole {
     /// Receives a copy but is not expected to participate.
     NonParticipant,
     /// A non-standard `X-` prefixed role.
-    XName(String),
+    XName(Text),
     /// An IANA-registered role.
-    IanaToken(String),
+    IanaToken(Text),
 }
 
 /// Participation statuses for a "VEVENT"
@@ -412,9 +465,9 @@ pub enum PartStatEvent {
     /// Participation has been delegated to another attendee.
     Delegated,
     /// A non-standard `X-` prefixed status.
-    XName(String),
+    XName(Text),
     /// An IANA-registered status.
-    IanaToken(String),
+    IanaToken(Text),
 }
 
 /// Participation statuses for a "VTODO"
@@ -436,9 +489,9 @@ pub enum PartStatTodo {
     /// To-do is being worked on.
     InProcess,
     /// A non-standard `X-` prefixed status.
-    XName(String),
+    XName(Text),
     /// An IANA-registered status.
-    IanaToken(String),
+    IanaToken(Text),
 }
 
 /// Participation statuses for a "VJOURNAL"
@@ -452,9 +505,9 @@ pub enum PartStatJournal {
     /// Journal entry has been declined.
     Declined,
     /// A non-standard `X-` prefixed status.
-    XName(String),
+    XName(Text),
     /// An IANA-registered status.
-    IanaToken(String),
+    IanaToken(Text),
 }
 
 /// This parameter can be specified on a property that
@@ -485,9 +538,9 @@ pub enum RelationshipType {
     /// The referenced component is a sibling (peer).
     Sibling,
     /// A non-standard `X-` prefixed relationship type.
-    XName(String),
+    XName(Text),
     /// An IANA-registered relationship type.
-    IanaToken(String),
+    IanaToken(Text),
 }
 
 /// This parameter can be specified on properties that
