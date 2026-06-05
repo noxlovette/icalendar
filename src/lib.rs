@@ -26,6 +26,7 @@ pub struct Uid(pub String);
 
 /// A pair of two values of the same type, used for properties such as [`Geo`]
 /// that carry two coordinates.
+#[derive(Debug)]
 pub struct Pair<T>(pub T, pub T);
 
 /// A property can have attributes with which it is associated.  These

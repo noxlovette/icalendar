@@ -16,19 +16,102 @@ pub trait Parameter: Sized {
     fn parse(b: Bytes) -> ParseResult<Self>;
 }
 
+/// Any property parameter defined in Section 3.2 of RFC 5545.
+///
+/// A property can have attributes with which it is associated.
+/// These "property parameters" contain meta-information about the
+/// property or the property value.  Property parameters are specified
+/// on a semicolon-separated list on the line of the property.
+/// Property parameter values that contain the COLON, SEMICOLON, or
+/// COMMA character separators MUST be specified as quoted-string
+/// values.  Property values that do not contain any character
+/// delimiters do not need to be quoted but may be.  Some property
+/// parameter values are defined using a list of values.  In these
+/// cases, the parameter value is defined as a COMMA-separated list of
+/// values.
+///
+/// Example:
+///
+/// > DTSTART;TZID=America/New_York;VALUE=DATE-TIME:19980119T020000
+///
+/// [Section 3.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2)
+pub enum PropertyParams {
+    /// Alternate text representation URI (`ALTREP`). §3.2.1
+    Altrep(Altrep),
+    /// Common name for a calendar user (`CN`). §3.2.2
+    CommonName(CommonName),
+    /// Calendar user type (`CUTYPE`). §3.2.3
+    CalendarUserType(CalendarUserType),
+    /// Delegators — who delegated to this attendee (`DELEGATED-FROM`). §3.2.4
+    Delegators(Delegators),
+    /// Delegatees — to whom this attendee delegated (`DELEGATED-TO`). §3.2.5
+    Delegatees(Delegatees),
+    /// Directory entry reference URI (`DIR`). §3.2.6
+    DirectoryEntryReference(DirectoryEntryReference),
+    /// Inline encoding scheme (`ENCODING`). §3.2.7
+    Encoding(Encoding),
+    /// MIME media type of a referenced object (`FMTTYPE`). §3.2.8
+    Fmttype(Fmttype),
+    /// Free/busy time type (`FBTYPE`). §3.2.9
+    Fbtype(Fbtype),
+    /// Language of property text (`LANGUAGE`). §3.2.10
+    Language(Language),
+    /// Group/list membership addresses (`MEMBER`). §3.2.11
+    Member(Member),
+    /// Participation status (`PARTSTAT`). §3.2.12
+    ParticipationStatus(ParticipationStatus),
+    /// Recurrence identifier range (`RANGE`). §3.2.13
+    RecurrenceIdentifierRange(RecurrenceIdentifierRange),
+    /// Alarm trigger relationship (`RELATED`). §3.2.14
+    AlarmTriggerRelationship(AlarmTriggerRelationship),
+    /// Hierarchical relationship type (`RELTYPE`). §3.2.15
+    RelationshipType(RelationshipType),
+    /// Participation role (`ROLE`). §3.2.16
+    ParticipationRole(ParticipationRole),
+    /// Reply requested flag (`RSVP`). §3.2.17
+    Rsvp(Rsvp),
+    /// Acting-on-behalf-of address (`SENT-BY`). §3.2.18
+    SentBy(SentBy),
+    /// Time zone identifier (`TZID`). §3.2.19
+    TimeZoneIdentifier(TimeZoneIdentifier),
+    /// Explicit value type (`VALUE`). §3.2.20
+    DataTypes(DataTypes),
+    /// Non-standard `X-`-prefixed parameter.
+    XName {
+        name: crate::values::Text,
+        value: crate::values::Text,
+    },
+    /// IANA-registered parameter not listed above.
+    Iana {
+        name: crate::values::Text,
+        value: crate::values::Text,
+    },
+}
+
+impl PropertyParams {
+    fn parse(b: &Bytes) -> ParseResult<Vec<Self>> {
+        // need to split by SEMICOLON BUT a SEMICOLON that is NOT in DOUBLE QUOTES
+        todo!()
+    }
+}
+
 pub use internal::*;
 mod internal {
     use crate::{
         params::{Altrep, DataTypes, Language, Parameter, TimeZoneIdentifier},
         values::Text,
     };
+    use std::collections::HashMap;
 
     /// Convenience wrapper around params
     #[derive(Debug, Default)]
-    pub struct Params<T: Default> {
+    pub struct Params<T> {
+        /// Types defined in the RFC
         standard: T,
-        iana: Vec<Text>,
-        non_standard: Vec<Text>,
+        /// IANA-registered types
+        iana: HashMap<Text, Text>,
+        /// X-Name Types
+        experimental: HashMap<Text, Text>,
     }
 
     /// Convenience type that multiple components share
@@ -149,8 +232,9 @@ impl Parameter for Altrep {
     fn parse(b: Bytes) -> ParseResult<Self> {
         let (n, v) = split_once(&b, b'=')?;
         match_name(n, b"ALTREP")?;
+        let stripped = strip_quoted_string(v)?;
 
-        Ok(Self(v.try_into()?))
+        Ok(Self(stripped.try_into()?))
     }
 
     fn write(&self, w: impl Write) -> ParseResult<()> {
@@ -207,7 +291,8 @@ impl Parameter for Delegators {
 
         let mut vec = Vec::new();
         for s in v.split(|b| *b == b',') {
-            vec.push(s.try_into()?);
+            let stripped = strip_quoted_string(s)?;
+            vec.push(stripped.try_into()?);
         }
 
         Ok(Self(vec))
@@ -239,7 +324,8 @@ impl Parameter for Delegatees {
 
         let mut vec = Vec::new();
         for s in v.split(|b| *b == b',') {
-            vec.push(s.try_into()?);
+            let stripped = strip_quoted_string(s)?;
+            vec.push(stripped.try_into()?);
         }
 
         Ok(Self(vec))
@@ -267,8 +353,9 @@ impl Parameter for DirectoryEntryReference {
     fn parse(b: Bytes) -> ParseResult<Self> {
         let (n, v) = split_once(&b, b'=')?;
         match_name(n, b"DIR")?;
+        let stripped = strip_quoted_string(v)?;
 
-        Ok(Self(v.try_into()?))
+        Ok(Self(stripped.try_into()?))
     }
 
     fn write(&self, w: impl Write) -> ParseResult<()> {
@@ -465,7 +552,7 @@ impl Parameter for Member {
 
         let mut vec = Vec::new();
         for el in v.split(|b| *b == b',') {
-            vec.push(el.try_into()?);
+            vec.push(strip_quoted_string(el)?.try_into()?);
         }
 
         Ok(Self(vec))
@@ -914,7 +1001,8 @@ impl Parameter for SentBy {
     fn parse(b: Bytes) -> ParseResult<Self> {
         let (n, v) = split_once(&b, b'=')?;
         match_name(n, b"SENT-BY")?;
-        Ok(Self(v.try_into()?))
+        let stripped = strip_quoted_string(v)?;
+        Ok(Self(stripped.try_into()?))
     }
 
     fn write(&self, _w: impl Write) -> ParseResult<()> {

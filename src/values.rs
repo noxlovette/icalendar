@@ -2,8 +2,8 @@ use std::ops::Deref;
 
 use crate::{
     ParseError,
-    internal::{split_once, strip_quoted_string},
-    params::TimeZoneIdentifier,
+    internal::split_once,
+    params::{Parameter, TimeZoneIdentifier},
 };
 use base64::alphabet::Alphabet;
 use bytes::Bytes;
@@ -739,9 +739,7 @@ impl TryFrom<&[u8]> for Uri {
     type Error = ParseError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self(url::Url::parse(str::from_utf8(
-            strip_quoted_string(value)?,
-        )?)?))
+        Ok(Self(url::Url::parse(str::from_utf8(value)?)?))
     }
 }
 
@@ -793,5 +791,17 @@ impl TryFrom<&[u8]> for Boolean {
         };
 
         Ok(r)
+    }
+}
+
+impl Parameter for () {
+    fn parse(_b: Bytes) -> crate::ParseResult<Self> {
+        Ok(())
+    }
+    fn write(
+        &self,
+        _w: impl std::io::prelude::Write,
+    ) -> crate::ParseResult<()> {
+        Ok(())
     }
 }
