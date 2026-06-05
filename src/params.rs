@@ -19,7 +19,7 @@ pub trait Parameter: Sized {
 pub use internal::*;
 mod internal {
     use crate::{
-        params::{Altrep, DataTypes, Language, TimeZoneIdentifier},
+        params::{Altrep, DataTypes, Language, Parameter, TimeZoneIdentifier},
         values::Text,
     };
 
@@ -114,7 +114,13 @@ impl Parameter for DataTypes {
             b"RECUR" => Self::Recur,
             b"TIME" => Self::Time,
             b"UTC-OFFSET" => Self::UtcOffset,
-            x => Self::XName(x.try_into()?),
+            x => {
+                if x.to_ascii_uppercase().starts_with(b"X-") {
+                    Self::XName(x.try_into()?)
+                } else {
+                    Self::Iana(x.try_into()?)
+                }
+            }
         };
 
         Ok(r)
@@ -374,6 +380,8 @@ pub enum Fbtype {
     BusyUnavailable,
     /// The interval is tentatively busy.
     BusyTentative,
+    X(Text),
+    Iana(Text),
 }
 
 impl Parameter for Fbtype {
@@ -386,11 +394,12 @@ impl Parameter for Fbtype {
             b"BUSY" => Self::Busy,
             b"BUSY-UNAVAILABLE" => Self::BusyUnavailable,
             b"BUSY-TENTATIVE" => Self::BusyTentative,
-            _ => {
-                return Err(ParseError::Parameter {
-                    expected: "FBTYPE value".into(),
-                    received: str::from_utf8(v).ok().map(|s| s.into()),
-                });
+            x => {
+                if x.to_ascii_uppercase().starts_with(b"X-") {
+                    Self::X(x.try_into()?)
+                } else {
+                    Self::Iana(x.try_into()?)
+                }
             }
         };
 
@@ -488,6 +497,8 @@ pub enum CalendarUserType {
     Room,
     /// The type is unknown.
     Unknown,
+    X(Text),
+    Iana(Text),
 }
 
 /// This parameter can be specified on properties with a
@@ -514,6 +525,8 @@ pub enum ParticipationStatus {
     Todo(PartStatTodo),
     /// Status for a `VJOURNAL` attendee.
     Journal(PartStatJournal),
+    X(Text),
+    Iana(Text),
 }
 
 /// This parameter can be specified on properties with a
@@ -618,6 +631,8 @@ pub enum ParticipationRole {
     OptParticipant,
     /// Receives a copy but is not expected to participate.
     NonParticipant,
+    X(Text),
+    Iana(Text),
 }
 
 /// Participation statuses for a "VEVENT"
@@ -634,6 +649,8 @@ pub enum PartStatEvent {
     Tentative,
     /// Participation has been delegated to another attendee.
     Delegated,
+    X(Text),
+    Iana(Text),
 }
 
 /// Participation statuses for a "VTODO"
@@ -654,6 +671,8 @@ pub enum PartStatTodo {
     Completed,
     /// To-do is being worked on.
     InProcess,
+    X(Text),
+    Iana(Text),
 }
 
 /// Participation statuses for a "VJOURNAL"
@@ -666,6 +685,8 @@ pub enum PartStatJournal {
     Accepted,
     /// Journal entry has been declined.
     Declined,
+    X(Text),
+    Iana(Text),
 }
 
 /// This parameter can be specified on a property that
@@ -695,6 +716,8 @@ pub enum RelationshipType {
     Child,
     /// The referenced component is a sibling (peer).
     Sibling,
+    X(Text),
+    Iana(Text),
 }
 
 /// This parameter can be specified on properties that
@@ -756,11 +779,12 @@ impl Parameter for CalendarUserType {
             b"RESOURCE" => Self::Resource,
             b"ROOM" => Self::Room,
             b"UNKNOWN" => Self::Unknown,
-            _ => {
-                return Err(ParseError::Parameter {
-                    expected: "CUTYPE value".into(),
-                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
-                });
+            x => {
+                if x.to_ascii_uppercase().starts_with(b"X-") {
+                    Self::X(x.try_into()?)
+                } else {
+                    Self::Iana(x.try_into()?)
+                }
             }
         };
         Ok(r)
@@ -780,11 +804,12 @@ impl Parameter for ParticipationRole {
             b"REQ-PARTICIPANT" => Self::ReqParticipant,
             b"OPT-PARTICIPANT" => Self::OptParticipant,
             b"NON-PARTICIPANT" => Self::NonParticipant,
-            _ => {
-                return Err(ParseError::Parameter {
-                    expected: "ROLE value".into(),
-                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
-                });
+            x => {
+                if x.to_ascii_uppercase().starts_with(b"X-") {
+                    Self::X(x.try_into()?)
+                } else {
+                    Self::Iana(x.try_into()?)
+                }
             }
         };
         Ok(r)
@@ -805,11 +830,12 @@ impl Parameter for PartStatEvent {
             b"DECLINED" => Self::Declined,
             b"TENTATIVE" => Self::Tentative,
             b"DELEGATED" => Self::Delegated,
-            _ => {
-                return Err(ParseError::Parameter {
-                    expected: "PARTSTAT value for VEVENT".into(),
-                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
-                });
+            x => {
+                if x.to_ascii_uppercase().starts_with(b"X-") {
+                    Self::X(x.try_into()?)
+                } else {
+                    Self::Iana(x.try_into()?)
+                }
             }
         };
         Ok(r)
@@ -832,11 +858,12 @@ impl Parameter for PartStatTodo {
             b"DELEGATED" => Self::Delegated,
             b"COMPLETED" => Self::Completed,
             b"IN-PROCESS" => Self::InProcess,
-            _ => {
-                return Err(ParseError::Parameter {
-                    expected: "PARTSTAT value for VTODO".into(),
-                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
-                });
+            x => {
+                if x.to_ascii_uppercase().starts_with(b"X-") {
+                    Self::X(x.try_into()?)
+                } else {
+                    Self::Iana(x.try_into()?)
+                }
             }
         };
         Ok(r)
@@ -855,11 +882,12 @@ impl Parameter for PartStatJournal {
             b"NEEDS-ACTION" => Self::NeedsAction,
             b"ACCEPTED" => Self::Accepted,
             b"DECLINED" => Self::Declined,
-            _ => {
-                return Err(ParseError::Parameter {
-                    expected: "PARTSTAT value for VJOURNAL".into(),
-                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
-                });
+            x => {
+                if x.to_ascii_uppercase().starts_with(b"X-") {
+                    Self::X(x.try_into()?)
+                } else {
+                    Self::Iana(x.try_into()?)
+                }
             }
         };
         Ok(r)
@@ -919,11 +947,12 @@ impl Parameter for RelationshipType {
             b"PARENT" => Self::Parent,
             b"CHILD" => Self::Child,
             b"SIBLING" => Self::Sibling,
-            _ => {
-                return Err(ParseError::Parameter {
-                    expected: "RELTYPE value".into(),
-                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
-                });
+            x => {
+                if x.to_ascii_uppercase().starts_with(b"X-") {
+                    Self::X(x.try_into()?)
+                } else {
+                    Self::Iana(x.try_into()?)
+                }
             }
         };
         Ok(r)
@@ -1112,11 +1141,6 @@ mod tests {
         assert!(matches!(v, Fbtype::BusyUnavailable));
     }
 
-    #[test]
-    fn fbtype_invalid_value() {
-        assert!(Fbtype::parse(b(b"FBTYPE=MAYBE")).is_err());
-    }
-
     // Language
 
     #[test]
@@ -1151,22 +1175,12 @@ mod tests {
         assert!(matches!(v, CalendarUserType::Room));
     }
 
-    #[test]
-    fn cutype_invalid_value() {
-        assert!(CalendarUserType::parse(b(b"CUTYPE=ROBOT")).is_err());
-    }
-
     // ParticipationRole
 
     #[test]
     fn role_ok() {
         let v = ParticipationRole::parse(b(b"ROLE=CHAIR")).unwrap();
         assert!(matches!(v, ParticipationRole::Chair));
-    }
-
-    #[test]
-    fn role_invalid_value() {
-        assert!(ParticipationRole::parse(b(b"ROLE=OBSERVER")).is_err());
     }
 
     // PartStatEvent
@@ -1177,11 +1191,6 @@ mod tests {
         assert!(matches!(v, PartStatEvent::Declined));
     }
 
-    #[test]
-    fn partstat_event_todo_only_value() {
-        assert!(PartStatEvent::parse(b(b"PARTSTAT=IN-PROCESS")).is_err());
-    }
-
     // PartStatTodo
 
     #[test]
@@ -1190,22 +1199,12 @@ mod tests {
         assert!(matches!(v, PartStatTodo::InProcess));
     }
 
-    #[test]
-    fn partstat_todo_invalid_value() {
-        assert!(PartStatTodo::parse(b(b"PARTSTAT=INVALID")).is_err());
-    }
-
     // PartStatJournal
 
     #[test]
     fn partstat_journal_ok() {
         let v = PartStatJournal::parse(b(b"PARTSTAT=ACCEPTED")).unwrap();
         assert!(matches!(v, PartStatJournal::Accepted));
-    }
-
-    #[test]
-    fn partstat_journal_todo_only_value() {
-        assert!(PartStatJournal::parse(b(b"PARTSTAT=IN-PROCESS")).is_err());
     }
 
     // Rsvp
@@ -1255,11 +1254,6 @@ mod tests {
         assert!(matches!(v, RelationshipType::Sibling));
     }
 
-    #[test]
-    fn reltype_invalid_value() {
-        assert!(RelationshipType::parse(b(b"RELTYPE=COUSIN")).is_err());
-    }
-
     // AlarmTriggerRelationship
 
     #[test]
@@ -1287,5 +1281,152 @@ mod tests {
         assert!(
             RecurrenceIdentifierRange::parse(b(b"RANGE=THISANDPRIOR")).is_err()
         );
+    }
+
+    // x-name and iana-token fallthrough
+
+    #[test]
+    fn data_types_xname() {
+        let v = DataTypes::parse(b(b"VALUE=X-VENDOR-MYTYPE")).unwrap();
+        assert!(matches!(v, DataTypes::XName(_)));
+    }
+
+    #[test]
+    fn data_types_xname_lowercase_prefix() {
+        // Detection is case-insensitive: "x-" must also route to XName
+        let v = DataTypes::parse(b(b"VALUE=x-vendor-mytype")).unwrap();
+        assert!(matches!(v, DataTypes::XName(_)));
+    }
+
+    #[test]
+    fn data_types_iana() {
+        let v = DataTypes::parse(b(b"VALUE=MY-CUSTOM-TYPE")).unwrap();
+        assert!(matches!(v, DataTypes::Iana(_)));
+    }
+
+    #[test]
+    fn fbtype_xname() {
+        let v = Fbtype::parse(b(b"FBTYPE=X-VENDOR-BUSY")).unwrap();
+        assert!(matches!(v, Fbtype::X(_)));
+    }
+
+    #[test]
+    fn fbtype_xname_lowercase_prefix() {
+        let v = Fbtype::parse(b(b"FBTYPE=x-vendor-busy")).unwrap();
+        assert!(matches!(v, Fbtype::X(_)));
+    }
+
+    #[test]
+    fn fbtype_iana() {
+        let v = Fbtype::parse(b(b"FBTYPE=BUSY-CONDITIONAL")).unwrap();
+        assert!(matches!(v, Fbtype::Iana(_)));
+    }
+
+    #[test]
+    fn cutype_xname() {
+        let v = CalendarUserType::parse(b(b"CUTYPE=X-DEVICE")).unwrap();
+        assert!(matches!(v, CalendarUserType::X(_)));
+    }
+
+    #[test]
+    fn cutype_xname_lowercase_prefix() {
+        let v = CalendarUserType::parse(b(b"CUTYPE=x-device")).unwrap();
+        assert!(matches!(v, CalendarUserType::X(_)));
+    }
+
+    #[test]
+    fn cutype_iana() {
+        let v = CalendarUserType::parse(b(b"CUTYPE=ORG-UNIT")).unwrap();
+        assert!(matches!(v, CalendarUserType::Iana(_)));
+    }
+
+    #[test]
+    fn role_xname() {
+        let v = ParticipationRole::parse(b(b"ROLE=X-MODERATOR")).unwrap();
+        assert!(matches!(v, ParticipationRole::X(_)));
+    }
+
+    #[test]
+    fn role_xname_lowercase_prefix() {
+        let v = ParticipationRole::parse(b(b"ROLE=x-moderator")).unwrap();
+        assert!(matches!(v, ParticipationRole::X(_)));
+    }
+
+    #[test]
+    fn role_iana() {
+        let v = ParticipationRole::parse(b(b"ROLE=PRESENTER")).unwrap();
+        assert!(matches!(v, ParticipationRole::Iana(_)));
+    }
+
+    #[test]
+    fn partstat_event_xname() {
+        let v = PartStatEvent::parse(b(b"PARTSTAT=X-PENDING")).unwrap();
+        assert!(matches!(v, PartStatEvent::X(_)));
+    }
+
+    #[test]
+    fn partstat_event_xname_lowercase_prefix() {
+        let v = PartStatEvent::parse(b(b"PARTSTAT=x-pending")).unwrap();
+        assert!(matches!(v, PartStatEvent::X(_)));
+    }
+
+    #[test]
+    fn partstat_event_iana() {
+        let v = PartStatEvent::parse(b(b"PARTSTAT=CONFIRMED")).unwrap();
+        assert!(matches!(v, PartStatEvent::Iana(_)));
+    }
+
+    #[test]
+    fn partstat_todo_xname() {
+        let v = PartStatTodo::parse(b(b"PARTSTAT=X-BLOCKED")).unwrap();
+        assert!(matches!(v, PartStatTodo::X(_)));
+    }
+
+    #[test]
+    fn partstat_todo_xname_lowercase_prefix() {
+        let v = PartStatTodo::parse(b(b"PARTSTAT=x-blocked")).unwrap();
+        assert!(matches!(v, PartStatTodo::X(_)));
+    }
+
+    #[test]
+    fn partstat_todo_iana() {
+        let v = PartStatTodo::parse(b(b"PARTSTAT=CONFIRMED")).unwrap();
+        assert!(matches!(v, PartStatTodo::Iana(_)));
+    }
+
+    #[test]
+    fn partstat_journal_xname() {
+        let v = PartStatJournal::parse(b(b"PARTSTAT=X-DRAFT")).unwrap();
+        assert!(matches!(v, PartStatJournal::X(_)));
+    }
+
+    #[test]
+    fn partstat_journal_xname_lowercase_prefix() {
+        let v = PartStatJournal::parse(b(b"PARTSTAT=x-draft")).unwrap();
+        assert!(matches!(v, PartStatJournal::X(_)));
+    }
+
+    #[test]
+    fn partstat_journal_iana() {
+        let v = PartStatJournal::parse(b(b"PARTSTAT=CONFIRMED")).unwrap();
+        assert!(matches!(v, PartStatJournal::Iana(_)));
+    }
+
+    #[test]
+    fn reltype_xname() {
+        let v = RelationshipType::parse(b(b"RELTYPE=X-DEPENDS-ON")).unwrap();
+        assert!(matches!(v, RelationshipType::X(_)));
+    }
+
+    #[test]
+    fn reltype_xname_lowercase_prefix() {
+        let v = RelationshipType::parse(b(b"RELTYPE=x-depends-on")).unwrap();
+        assert!(matches!(v, RelationshipType::X(_)));
+    }
+
+    #[test]
+    fn reltype_iana() {
+        let v = RelationshipType::parse(b(b"RELTYPE=FINISHES")).unwrap();
+        assert!(matches!(v, RelationshipType::Iana(_)));
     }
 }
