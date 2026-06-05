@@ -142,7 +142,7 @@ pub struct Altrep(Uri);
 impl Parameter for Altrep {
     fn parse(b: Bytes) -> ParseResult<Self> {
         let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"DELEGATED-TO")?;
+        match_name(n, b"ALTREP")?;
 
         Ok(Self(v.try_into()?))
     }
@@ -169,7 +169,7 @@ pub struct CommonName(Text);
 impl Parameter for CommonName {
     fn parse(b: Bytes) -> ParseResult<Self> {
         let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"DELEGATED-TO")?;
+        match_name(n, b"CN")?;
 
         Ok(Self(strip_quoted_string(v)?.try_into()?))
     }
@@ -421,14 +421,14 @@ impl Parameter for Fbtype {
 /// > LOCATION;LANGUAGE=no:Tyskland
 ///
 /// [Section 3.2.10](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.10)
-pub struct Language(langtag::LanguageBuf);
+pub struct Language(langtag::LangTagBuf);
 
 impl Parameter for Language {
     fn parse(b: Bytes) -> ParseResult<Self> {
         let (n, v) = split_once(&b, b'=')?;
         match_name(n, b"LANGUAGE")?;
         Ok(Self(
-            langtag::LanguageBuf::from_bytes(v.to_vec())
+            langtag::LangTagBuf::from_bytes(v.to_vec())
                 .map_err(|_| ParseError::Language)?,
         ))
     }
@@ -886,7 +886,7 @@ impl Parameter for SentBy {
     fn parse(b: Bytes) -> ParseResult<Self> {
         let (n, v) = split_once(&b, b'=')?;
         match_name(n, b"SENT-BY")?;
-        Ok(Self(strip_quoted_string(v)?.try_into()?))
+        Ok(Self(v.try_into()?))
     }
 
     fn write(&self, _w: impl Write) -> ParseResult<()> {
@@ -971,5 +971,321 @@ impl Parameter for RecurrenceIdentifierRange {
 
     fn write(&self, _w: impl Write) -> ParseResult<()> {
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+
+    use super::*;
+
+    fn b(s: &'static [u8]) -> Bytes {
+        Bytes::from_static(s)
+    }
+
+    // DataTypes
+
+    #[test]
+    fn data_types_ok() {
+        let v = DataTypes::parse(b(b"VALUE=DATE-TIME")).unwrap();
+        assert!(matches!(v, DataTypes::DateTime));
+    }
+
+    #[test]
+    fn data_types_wrong_name() {
+        assert!(DataTypes::parse(b(b"TYPE=DATE-TIME")).is_err());
+    }
+
+    // Altrep
+
+    #[test]
+    fn altrep_ok() {
+        let v = Altrep::parse(b(b"ALTREP=\"http://example.com/cal\""));
+        assert!(v.is_ok());
+    }
+
+    #[test]
+    fn altrep_wrong_name() {
+        assert!(Altrep::parse(b(b"Meow=\"http://example.com/cal\"")).is_err());
+    }
+
+    // CommonName
+
+    #[test]
+    fn common_name_ok() {
+        let v = CommonName::parse(b(b"CN=\"John Smith\""));
+        assert!(v.is_ok());
+    }
+
+    #[test]
+    fn common_name_wrong_name() {
+        assert!(CommonName::parse(b(b"Meow=\"John Smith\"")).is_err());
+    }
+
+    // Delegators
+
+    #[test]
+    fn delegators_ok() {
+        let v = Delegators::parse(b(
+            b"DELEGATED-FROM=\"mailto:a@example.com\",\"mailto:b@example.com\"",
+        ));
+        assert!(v.is_ok());
+    }
+
+    #[test]
+    fn delegators_wrong_name() {
+        assert!(
+            Delegators::parse(b(b"DELEGATED-TO=\"mailto:a@example.com\""))
+                .is_err()
+        );
+    }
+
+    // Delegatees
+
+    #[test]
+    fn delegatees_ok() {
+        let v =
+            Delegatees::parse(b(b"DELEGATED-TO=\"mailto:jdoe@example.com\""));
+        assert!(v.is_ok());
+    }
+
+    #[test]
+    fn delegatees_wrong_name() {
+        assert!(
+            Delegatees::parse(b(b"DELEGATED-FROM=\"mailto:jdoe@example.com\""))
+                .is_err()
+        );
+    }
+
+    // DirectoryEntryReference
+
+    #[test]
+    fn dir_ok() {
+        let v = DirectoryEntryReference::parse(b(
+            b"DIR=\"http://example.com/dir\"",
+        ));
+        assert!(v.is_ok());
+    }
+
+    #[test]
+    fn dir_wrong_name() {
+        assert!(
+            DirectoryEntryReference::parse(b(
+                b"ALTREP=\"http://example.com/dir\""
+            ))
+            .is_err()
+        );
+    }
+
+    // Encoding
+
+    #[test]
+    fn encoding_ok() {
+        let v = Encoding::parse(b(b"ENCODING=BASE64")).unwrap();
+        assert!(matches!(v, Encoding::Base64));
+    }
+
+    #[test]
+    fn encoding_invalid_value() {
+        assert!(Encoding::parse(b(b"ENCODING=QUOTED-PRINTABLE")).is_err());
+    }
+
+    // Fmttype
+
+    #[test]
+    fn fmttype_ok() {
+        let v = Fmttype::parse(b(b"FMTTYPE=application/msword"));
+        assert!(v.is_ok());
+    }
+
+    #[test]
+    fn fmttype_no_slash() {
+        assert!(Fmttype::parse(b(b"FMTTYPE=application")).is_err());
+    }
+
+    // Fbtype
+
+    #[test]
+    fn fbtype_ok() {
+        let v = Fbtype::parse(b(b"FBTYPE=BUSY-UNAVAILABLE")).unwrap();
+        assert!(matches!(v, Fbtype::BusyUnavailable));
+    }
+
+    #[test]
+    fn fbtype_invalid_value() {
+        assert!(Fbtype::parse(b(b"FBTYPE=MAYBE")).is_err());
+    }
+
+    // Language
+
+    #[test]
+    fn language_ok() {
+        let v = Language::parse(b(b"LANGUAGE=en-US"));
+        assert!(v.is_ok());
+    }
+
+    #[test]
+    fn language_invalid_tag() {
+        assert!(Language::parse(b(b"LANGUAGE=!!!")).is_err());
+    }
+
+    // Member
+
+    #[test]
+    fn member_ok() {
+        let v = Member::parse(b(b"MEMBER=\"mailto:jsmith@example.com\""));
+        assert!(v.is_ok());
+    }
+
+    #[test]
+    fn member_unquoted() {
+        assert!(Member::parse(b(b"MEMBER=mailto:jsmith@example.com")).is_err());
+    }
+
+    // CalendarUserType
+
+    #[test]
+    fn cutype_ok() {
+        let v = CalendarUserType::parse(b(b"CUTYPE=ROOM")).unwrap();
+        assert!(matches!(v, CalendarUserType::Room));
+    }
+
+    #[test]
+    fn cutype_invalid_value() {
+        assert!(CalendarUserType::parse(b(b"CUTYPE=ROBOT")).is_err());
+    }
+
+    // ParticipationRole
+
+    #[test]
+    fn role_ok() {
+        let v = ParticipationRole::parse(b(b"ROLE=CHAIR")).unwrap();
+        assert!(matches!(v, ParticipationRole::Chair));
+    }
+
+    #[test]
+    fn role_invalid_value() {
+        assert!(ParticipationRole::parse(b(b"ROLE=OBSERVER")).is_err());
+    }
+
+    // PartStatEvent
+
+    #[test]
+    fn partstat_event_ok() {
+        let v = PartStatEvent::parse(b(b"PARTSTAT=DECLINED")).unwrap();
+        assert!(matches!(v, PartStatEvent::Declined));
+    }
+
+    #[test]
+    fn partstat_event_todo_only_value() {
+        assert!(PartStatEvent::parse(b(b"PARTSTAT=IN-PROCESS")).is_err());
+    }
+
+    // PartStatTodo
+
+    #[test]
+    fn partstat_todo_ok() {
+        let v = PartStatTodo::parse(b(b"PARTSTAT=IN-PROCESS")).unwrap();
+        assert!(matches!(v, PartStatTodo::InProcess));
+    }
+
+    #[test]
+    fn partstat_todo_invalid_value() {
+        assert!(PartStatTodo::parse(b(b"PARTSTAT=INVALID")).is_err());
+    }
+
+    // PartStatJournal
+
+    #[test]
+    fn partstat_journal_ok() {
+        let v = PartStatJournal::parse(b(b"PARTSTAT=ACCEPTED")).unwrap();
+        assert!(matches!(v, PartStatJournal::Accepted));
+    }
+
+    #[test]
+    fn partstat_journal_todo_only_value() {
+        assert!(PartStatJournal::parse(b(b"PARTSTAT=IN-PROCESS")).is_err());
+    }
+
+    // Rsvp
+
+    #[test]
+    fn rsvp_ok() {
+        let v = Rsvp::parse(b(b"RSVP=TRUE")).unwrap();
+        assert!(*v.0);
+    }
+
+    #[test]
+    fn rsvp_invalid_value() {
+        assert!(Rsvp::parse(b(b"RSVP=MAYBE")).is_err());
+    }
+
+    // SentBy
+
+    #[test]
+    fn sent_by_ok() {
+        let v = SentBy::parse(b(b"SENT-BY=\"mailto:proxy@example.com\""));
+        assert!(v.is_ok());
+    }
+
+    #[test]
+    fn sent_by_unquoted() {
+        assert!(SentBy::parse(b(b"SENT-BY=mailto:proxy@example.com")).is_err());
+    }
+
+    // TimeZoneIdentifier
+
+    #[test]
+    fn tzid_ok() {
+        let v = TimeZoneIdentifier::parse(b(b"TZID=America/New_York"));
+        assert!(v.is_ok());
+    }
+
+    #[test]
+    fn tzid_unknown_timezone() {
+        assert!(TimeZoneIdentifier::parse(b(b"TZID=Not/A/Timezone")).is_err());
+    }
+
+    // RelationshipType
+
+    #[test]
+    fn reltype_ok() {
+        let v = RelationshipType::parse(b(b"RELTYPE=SIBLING")).unwrap();
+        assert!(matches!(v, RelationshipType::Sibling));
+    }
+
+    #[test]
+    fn reltype_invalid_value() {
+        assert!(RelationshipType::parse(b(b"RELTYPE=COUSIN")).is_err());
+    }
+
+    // AlarmTriggerRelationship
+
+    #[test]
+    fn alarm_related_ok() {
+        let v = AlarmTriggerRelationship::parse(b(b"RELATED=END")).unwrap();
+        assert!(matches!(v, AlarmTriggerRelationship::End));
+    }
+
+    #[test]
+    fn alarm_related_invalid_value() {
+        assert!(AlarmTriggerRelationship::parse(b(b"RELATED=MIDDLE")).is_err());
+    }
+
+    // RecurrenceIdentifierRange
+
+    #[test]
+    fn range_ok() {
+        let v = RecurrenceIdentifierRange::parse(b(b"RANGE=THISANDFUTURE"))
+            .unwrap();
+        assert!(matches!(v, RecurrenceIdentifierRange::ThisAndFuture));
+    }
+
+    #[test]
+    fn range_deprecated_value() {
+        assert!(
+            RecurrenceIdentifierRange::parse(b(b"RANGE=THISANDPRIOR")).is_err()
+        );
     }
 }
