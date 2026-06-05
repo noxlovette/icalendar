@@ -28,4 +28,19 @@ pub enum ParseError {
     /// Encoding error
     #[error("UTF-8 Error")]
     UTF(#[from] Utf8Error),
+
+    /// [CalendarUserAddress] Parsing Error
+    #[error("Malformed CalenderUserAddress")]
+    CalUserAddress,
+
+    /// [MediaType] Parsing Error
+    #[error("Malformed MediaType")]
+    MediaType,
+
+    /// [Language] Parsing Error
+    #[error("Malformed Language")]
+    Language,
+
+    #[error("Malformed Boolean")]
+    Boolean,
 }

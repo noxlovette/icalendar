@@ -1,5 +1,8 @@
 use crate::{
-    params::{CommonName, DirectoryEntryReference, Language, Params, SentBy, TextParams},
+    params::{
+        CommonName, DirectoryEntryReference, Language, Params, SentBy,
+        TextParams,
+    },
     values::{CalendarUserAddress, DateOrDatetime, Text, Uri},
 };
 use params::*;
@@ -9,7 +12,7 @@ use params::*;
 /// Example:
 ///
 /// > ATTENDEE;ROLE=REQ-PARTICIPANT;DELEGATED-FROM="mailto:bob@example.com";
-/// >  PARTSTAT=ACCEPTED;CN=Jane Doe:mailto:jdoe@example.com
+/// > PARTSTAT=ACCEPTED;CN=Jane Doe:mailto:jdoe@example.com
 ///
 /// [Section 3.8.4.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.1)
 pub struct Attendee {

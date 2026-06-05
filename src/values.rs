@@ -1,7 +1,15 @@
-use crate::params::TimeZoneIdentifier;
+use std::ops::Deref;
+
+use crate::{
+    ParseError,
+    internal::{split_once, strip_quoted_string},
+    params::TimeZoneIdentifier,
+};
 use base64::alphabet::Alphabet;
+use bytes::Bytes;
 use chrono::{
-    DateTime as ChronoDateTime, Duration as ChronoDuration, FixedOffset, NaiveDate, NaiveTime, Utc,
+    DateTime as ChronoDateTime, Duration as ChronoDuration, FixedOffset,
+    NaiveDate, NaiveTime, Utc,
 };
 pub use recurrence::Recur;
 use url::Url;
@@ -15,8 +23,8 @@ pub enum DateOrDatetime {
     DateTime(DateTime),
 }
 
-/// Convenience union of [`Date`], [`DateTime`], and [`Period`] used by properties
-/// that accept any of those three value types (e.g., `FREEBUSY`).
+/// Convenience union of [`Date`], [`DateTime`], and [`Period`] used by
+/// properties that accept any of those three value types (e.g., `FREEBUSY`).
 pub enum DateTimePeriod {
     /// A calendar date without a time component.
     Date(Date),
@@ -429,7 +437,8 @@ pub struct Text(String);
 /// > http://example.com/my-report.txt
 ///
 /// [Section 3.3.13](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.13)
-pub type Uri = Url;
+#[derive(Debug)]
+pub struct Uri(Url);
 
 /// If the property permits, multiple "integer" values are
 /// specified by a COMMA-separated list of values.  The valid range
@@ -455,7 +464,7 @@ pub type Float = f64;
 /// > mailto:jane_doe@example.com
 ///
 /// [Section 3.3.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.3)
-pub type CalendarUserAddress = Url;
+pub struct CalendarUserAddress(Uri);
 
 mod recurrence {
     use super::DateOrDatetime;
@@ -689,5 +698,100 @@ mod recurrence {
         Monthly,
         /// Every N years.
         Yearly,
+    }
+}
+
+/// [RFC 4288](https://datatracker.ietf.org/doc/html/rfc4288#section-4.2)
+///
+/// As used in this crate, we only validate that there is a type and subtype,
+/// separated by a slash
+pub struct MediaType {
+    media_type: Text,
+    subtype: Text,
+}
+
+impl From<&str> for Text {
+    fn from(value: &str) -> Self {
+        Self(value.into())
+    }
+}
+impl TryFrom<&[u8]> for MediaType {
+    type Error = ParseError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let (t, s) = split_once(value, b'/')?;
+        Ok(Self {
+            media_type: t.try_into()?,
+            subtype: s.try_into()?,
+        })
+    }
+}
+
+impl TryFrom<&[u8]> for Text {
+    type Error = ParseError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Ok(std::str::from_utf8(value)?.into())
+    }
+}
+
+impl TryFrom<&[u8]> for Uri {
+    type Error = ParseError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(url::Url::parse(str::from_utf8(
+            strip_quoted_string(value)?,
+        )?)?))
+    }
+}
+
+impl TryFrom<&[u8]> for CalendarUserAddress {
+    type Error = ParseError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let uri: Uri = value.try_into()?;
+        if uri.scheme() != "mailto" {
+            Err(ParseError::CalUserAddress)
+        } else {
+            Ok(Self(uri))
+        }
+    }
+}
+
+impl Deref for Uri {
+    type Target = Url;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Deref for Text {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Deref for Boolean {
+    type Target = bool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryFrom<&[u8]> for Boolean {
+    type Error = ParseError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let r = match value {
+            b"TRUE" => Self(true),
+            b"FALSE" => Self(false),
+            _ => return Err(ParseError::Boolean),
+        };
+
+        Ok(r)
     }
 }

@@ -59,7 +59,9 @@ pub struct Trigger {
 }
 
 mod params {
-    use crate::params::{AlarmTriggerRelationship, DataTypes, TimeZoneIdentifier};
+    use crate::params::{
+        AlarmTriggerRelationship, DataTypes, TimeZoneIdentifier,
+    };
 
     /// Parameter bundle for [`Trigger`].
     #[derive(Default)]

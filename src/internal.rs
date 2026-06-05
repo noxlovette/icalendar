@@ -1,13 +1,12 @@
 use crate::{ParseError, ParseResult};
-use bytes::Bytes;
 
 /// Splits a Bytes vector by given pattern
-pub(crate) fn split_once(b: &Bytes, pat: u8) -> ParseResult<(&[u8], &[u8])> {
+pub(crate) fn split_once(b: &[u8], needle: u8) -> ParseResult<(&[u8], &[u8])> {
     b.iter()
-        .position(|b| *b == pat)
+        .position(|b| *b == needle)
         .map(|pos| (&b[..pos], &b[pos + 1..]))
         .ok_or(ParseError::Parameter {
-            expected: pat.to_string(),
+            expected: needle.to_string(),
             received: std::str::from_utf8(b).ok().map(|s| s.into()),
         })
 }
@@ -16,7 +15,9 @@ pub(crate) fn split_once(b: &Bytes, pat: u8) -> ParseResult<(&[u8], &[u8])> {
 pub(crate) fn match_name(b: &[u8], pat: &[u8]) -> ParseResult<()> {
     if b.to_ascii_uppercase() != pat {
         Err(ParseError::Parameter {
-            expected: std::str::from_utf8(pat).unwrap_or("Unknown pattern").into(),
+            expected: std::str::from_utf8(pat)
+                .unwrap_or("Unknown pattern")
+                .into(),
             received: std::str::from_utf8(b).ok().map(|s| s.into()),
         })
     } else {
@@ -24,7 +25,8 @@ pub(crate) fn match_name(b: &[u8], pat: &[u8]) -> ParseResult<()> {
     }
 }
 
-/// Checks if a given value is in quotes and returns that value with the quotes stripped
+/// Checks if a given value is in quotes and returns that value with the quotes
+/// stripped
 pub(crate) fn strip_quoted_string(v: &[u8]) -> ParseResult<&[u8]> {
     let needle = &[b'"'];
 

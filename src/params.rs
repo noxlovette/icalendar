@@ -2,7 +2,7 @@ pub use crate::values::Recur;
 use crate::{
     ParseError, ParseResult,
     internal::{match_name, split_once, strip_quoted_string},
-    values::{Boolean, CalendarUserAddress, Text, Uri},
+    values::{Boolean, CalendarUserAddress, MediaType, Text, Uri},
 };
 use bytes::Bytes;
 use chrono_tz::Tz;
@@ -16,26 +16,35 @@ pub trait Parameter: Sized {
     fn parse(b: Bytes) -> ParseResult<Self>;
 }
 
-/// Convenience wrapper around params
-#[derive(Debug, Default)]
-pub struct Params<T: Default> {
-    standard: T,
-    iana: Vec<Text>,
-    non_standard: Vec<Text>,
-}
+pub use internal::*;
+mod internal {
+    use crate::{
+        params::{Altrep, DataTypes, Language, TimeZoneIdentifier},
+        values::Text,
+    };
 
-/// Convenience type that multiple components share
-#[derive(Default)]
-pub struct TextParams {
-    altrep: Option<Altrep>,
-    language: Option<Language>,
-}
+    /// Convenience wrapper around params
+    #[derive(Debug, Default)]
+    pub struct Params<T: Default> {
+        standard: T,
+        iana: Vec<Text>,
+        non_standard: Vec<Text>,
+    }
 
-/// Convenience parameter bundle shared by date/time properties (`DTSTART`, `DTEND`, etc.).
-#[derive(Default)]
-pub struct TimeParams {
-    vtype: Option<DataTypes>,
-    tzid: Option<TimeZoneIdentifier>,
+    /// Convenience type that multiple components share
+    #[derive(Default)]
+    pub struct TextParams {
+        altrep: Option<Altrep>,
+        language: Option<Language>,
+    }
+
+    /// Convenience parameter bundle shared by date/time properties (`DTSTART`,
+    /// `DTEND`, etc.).
+    #[derive(Default)]
+    pub struct TimeParams {
+        vtype: Option<DataTypes>,
+        tzid: Option<TimeZoneIdentifier>,
+    }
 }
 
 /// Explicit value type for a property, as carried by the `VALUE` parameter.
@@ -84,6 +93,38 @@ pub enum DataTypes {
     /// An IANA-registered type name.
     Iana(Text),
 }
+
+impl Parameter for DataTypes {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"VALUE")?;
+
+        let r = match v {
+            b"BINARY" => Self::Binary,
+            b"URI" => Self::Uri,
+            b"TEXT" => Self::Text,
+            b"BOOLEAN" => Self::Boolean,
+            b"CAL-ADDRESS" => Self::CalAddress,
+            b"DATE" => Self::Date,
+            b"DATE-TIME" => Self::DateTime,
+            b"DURATION" => Self::Duration,
+            b"FLOAT" => Self::Float,
+            b"INTEGER" => Self::Integer,
+            b"PERIOD" => Self::Period,
+            b"RECUR" => Self::Recur,
+            b"TIME" => Self::Time,
+            b"UTC-OFFSET" => Self::UtcOffset,
+            x => Self::XName(x.try_into()?),
+        };
+
+        Ok(r)
+    }
+
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
 /// This parameter specifies a URI that points to an
 /// alternate representation for a textual property value.  A property
 /// specifying this parameter MUST also include a value that reflects
@@ -96,7 +137,20 @@ pub enum DataTypes {
 /// > commonly used by current implementations.
 ///
 /// [Section 3.2.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.1)
-pub struct Altrep(Text);
+pub struct Altrep(Uri);
+
+impl Parameter for Altrep {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"DELEGATED-TO")?;
+
+        Ok(Self(v.try_into()?))
+    }
+
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
 
 /// This parameter can be specified on properties with a
 /// CAL-ADDRESS value type.  The parameter specifies the common name
@@ -107,10 +161,23 @@ pub struct Altrep(Text);
 ///
 /// Example:
 ///
-/// > ATTENDEE;CUTYPE=GROUP:mailto:ietf-calsch@example.org
+/// > ORGANIZER;CN="John Smith":mailto:jsmith@example.com
 ///
 /// [Section 3.2.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.2)
 pub struct CommonName(Text);
+
+impl Parameter for CommonName {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"DELEGATED-TO")?;
+
+        Ok(Self(strip_quoted_string(v)?.try_into()?))
+    }
+
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
 
 /// This parameter can be specified on properties with a
 /// CAL-ADDRESS value type.  This parameter specifies those calendar
@@ -125,8 +192,25 @@ pub struct CommonName(Text);
 /// > com
 ///
 /// [Section 3.2.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.4)
-pub struct Delegators(Text);
+pub struct Delegators(Vec<CalendarUserAddress>);
 
+impl Parameter for Delegators {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"DELEGATED-FROM")?;
+
+        let mut vec = Vec::new();
+        for s in v.split(|b| *b == b',') {
+            vec.push(s.try_into()?);
+        }
+
+        Ok(Self(vec))
+    }
+
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
 /// This parameter can be specified on properties with a
 /// CAL-ADDRESS value type.  This parameter specifies those calendar
 /// users whom have been delegated participation in a group-scheduled
@@ -140,7 +224,25 @@ pub struct Delegators(Text);
 /// > @example.com":mailto:jsmith@example.com
 ///
 /// [Section 3.2.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.5)
-pub struct Delegatees(Text);
+pub struct Delegatees(Vec<CalendarUserAddress>);
+
+impl Parameter for Delegatees {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"DELEGATED-TO")?;
+
+        let mut vec = Vec::new();
+        for s in v.split(|b| *b == b',') {
+            vec.push(s.try_into()?);
+        }
+
+        Ok(Self(vec))
+    }
+
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
 
 /// This parameter specifies a reference to a directory entry associated with
 /// the calendar user specified by the property.  The parameter value is a
@@ -148,7 +250,8 @@ pub struct Delegatees(Text);
 ///
 /// Example:
 ///
-/// > ORGANIZER;DIR="ldap://example.com:6666/o=ABC%20Industries,c=US???(cn=Jim%20Dolittle)":mailto:jimdo@example.com
+/// > ORGANIZER;DIR="ldap://example.com:6666/o=ABC%20Industries,c=US???(cn=Jim%
+/// > 20Dolittle)":mailto:jimdo@example.com
 ///
 /// [Section 3.2.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.6)
 #[derive(Debug)]
@@ -159,10 +262,9 @@ impl Parameter for DirectoryEntryReference {
         let (n, v) = split_once(&b, b'=')?;
         match_name(n, b"DIR")?;
 
-        Ok(Self(url::Url::parse(str::from_utf8(
-            strip_quoted_string(v)?,
-        )?)?))
+        Ok(Self(v.try_into()?))
     }
+
     fn write(&self, w: impl Write) -> ParseResult<()> {
         todo!()
     }
@@ -198,7 +300,9 @@ impl Parameter for Encoding {
             _ => {
                 return Err(ParseError::Parameter {
                     expected: "BASE64 or 8BIT".into(),
-                    received: std::str::from_utf8(b.as_ref()).ok().map(|s| s.into()),
+                    received: std::str::from_utf8(b.as_ref())
+                        .ok()
+                        .map(|s| s.into()),
                 });
             }
         };
@@ -226,7 +330,20 @@ impl Parameter for Encoding {
 /// TODO: replace with MIME
 ///
 /// [Section 3.2.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.8)
-pub struct Fmttype(Text);
+pub struct Fmttype(MediaType);
+
+impl Parameter for Fmttype {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"FMTTYPE")?;
+
+        Ok(Self(v.try_into()?))
+    }
+
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
 
 /// This parameter specifies the free or busy time type.
 /// The value FREE indicates that the time interval is free for
@@ -246,15 +363,43 @@ pub struct Fmttype(Text);
 /// > FREEBUSY;FBTYPE=BUSY:19980415T133000Z/19980415T170000Z
 ///
 /// [Section 3.2.9](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.9)
+#[derive(Default, Debug)]
 pub enum Fbtype {
     /// The interval is free for scheduling.
     Free,
     /// The interval is busy (one or more events scheduled).
+    #[default]
     Busy,
     /// The interval is busy and cannot be scheduled.
     BusyUnavailable,
     /// The interval is tentatively busy.
     BusyTentative,
+}
+
+impl Parameter for Fbtype {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"FBTYPE")?;
+
+        let r = match v {
+            b"FREE" => Self::Free,
+            b"BUSY" => Self::Busy,
+            b"BUSY-UNAVAILABLE" => Self::BusyUnavailable,
+            b"BUSY-TENTATIVE" => Self::BusyTentative,
+            _ => {
+                return Err(ParseError::Parameter {
+                    expected: "FBTYPE value".into(),
+                    received: str::from_utf8(v).ok().map(|s| s.into()),
+                });
+            }
+        };
+
+        Ok(r)
+    }
+
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
 }
 
 /// This parameter identifies the language of the text in
@@ -278,6 +423,21 @@ pub enum Fbtype {
 /// [Section 3.2.10](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.10)
 pub struct Language(langtag::LanguageBuf);
 
+impl Parameter for Language {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"LANGUAGE")?;
+        Ok(Self(
+            langtag::LanguageBuf::from_bytes(v.to_vec())
+                .map_err(|_| ParseError::Language)?,
+        ))
+    }
+
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
 /// This parameter can be specified on properties with a
 /// CAL-ADDRESS value type.  The parameter identifies the groups or
 /// list membership for the calendar user specified by the property.
@@ -288,6 +448,24 @@ pub struct Language(langtag::LanguageBuf);
 ///
 /// [Section 3.2.11](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.11)
 pub struct Member(Vec<CalendarUserAddress>);
+
+impl Parameter for Member {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"MEMBER")?;
+
+        let mut vec = Vec::new();
+        for el in v.split(|b| *b == b',') {
+            vec.push(el.try_into()?);
+        }
+
+        Ok(Self(vec))
+    }
+
+    fn write(&self, w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
 
 /// This parameter can be specified on properties with a
 /// CAL-ADDRESS value type.  The parameter identifies the type of
@@ -310,10 +488,6 @@ pub enum CalendarUserType {
     Room,
     /// The type is unknown.
     Unknown,
-    /// A non-standard `X-` prefixed type.
-    XType(Text),
-    /// An IANA-registered type.
-    IanaToken(Text),
 }
 
 /// This parameter can be specified on properties with a
@@ -444,10 +618,6 @@ pub enum ParticipationRole {
     OptParticipant,
     /// Receives a copy but is not expected to participate.
     NonParticipant,
-    /// A non-standard `X-` prefixed role.
-    XName(Text),
-    /// An IANA-registered role.
-    IanaToken(Text),
 }
 
 /// Participation statuses for a "VEVENT"
@@ -464,10 +634,6 @@ pub enum PartStatEvent {
     Tentative,
     /// Participation has been delegated to another attendee.
     Delegated,
-    /// A non-standard `X-` prefixed status.
-    XName(Text),
-    /// An IANA-registered status.
-    IanaToken(Text),
 }
 
 /// Participation statuses for a "VTODO"
@@ -488,10 +654,6 @@ pub enum PartStatTodo {
     Completed,
     /// To-do is being worked on.
     InProcess,
-    /// A non-standard `X-` prefixed status.
-    XName(Text),
-    /// An IANA-registered status.
-    IanaToken(Text),
 }
 
 /// Participation statuses for a "VJOURNAL"
@@ -504,10 +666,6 @@ pub enum PartStatJournal {
     Accepted,
     /// Journal entry has been declined.
     Declined,
-    /// A non-standard `X-` prefixed status.
-    XName(Text),
-    /// An IANA-registered status.
-    IanaToken(Text),
 }
 
 /// This parameter can be specified on a property that
@@ -537,10 +695,6 @@ pub enum RelationshipType {
     Child,
     /// The referenced component is a sibling (peer).
     Sibling,
-    /// A non-standard `X-` prefixed relationship type.
-    XName(Text),
-    /// An IANA-registered relationship type.
-    IanaToken(Text),
 }
 
 /// This parameter can be specified on properties that
@@ -588,5 +742,234 @@ pub enum RecurrenceIdentifierRange {
     ThisAndFuture,
 }
 
-/// Shorthand alias for [`RecurrenceIdentifierRange`], used by [`crate::RecurrenceSet`].
+/// Shorthand alias for [`RecurrenceIdentifierRange`], used by
+/// [`crate::RecurrenceSet`].
 pub type Range = RecurrenceIdentifierRange;
+
+impl Parameter for CalendarUserType {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"CUTYPE")?;
+        let r = match v {
+            b"INDIVIDUAL" => Self::Individual,
+            b"GROUP" => Self::Group,
+            b"RESOURCE" => Self::Resource,
+            b"ROOM" => Self::Room,
+            b"UNKNOWN" => Self::Unknown,
+            _ => {
+                return Err(ParseError::Parameter {
+                    expected: "CUTYPE value".into(),
+                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
+                });
+            }
+        };
+        Ok(r)
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
+impl Parameter for ParticipationRole {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"ROLE")?;
+        let r = match v {
+            b"CHAIR" => Self::Chair,
+            b"REQ-PARTICIPANT" => Self::ReqParticipant,
+            b"OPT-PARTICIPANT" => Self::OptParticipant,
+            b"NON-PARTICIPANT" => Self::NonParticipant,
+            _ => {
+                return Err(ParseError::Parameter {
+                    expected: "ROLE value".into(),
+                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
+                });
+            }
+        };
+        Ok(r)
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
+impl Parameter for PartStatEvent {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"PARTSTAT")?;
+        let r = match v {
+            b"NEEDS-ACTION" => Self::NeedsAction,
+            b"ACCEPTED" => Self::Accepted,
+            b"DECLINED" => Self::Declined,
+            b"TENTATIVE" => Self::Tentative,
+            b"DELEGATED" => Self::Delegated,
+            _ => {
+                return Err(ParseError::Parameter {
+                    expected: "PARTSTAT value for VEVENT".into(),
+                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
+                });
+            }
+        };
+        Ok(r)
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
+impl Parameter for PartStatTodo {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"PARTSTAT")?;
+        let r = match v {
+            b"NEEDS-ACTION" => Self::NeedsAction,
+            b"ACCEPTED" => Self::Accepted,
+            b"DECLINED" => Self::Declined,
+            b"TENTATIVE" => Self::Tentative,
+            b"DELEGATED" => Self::Delegated,
+            b"COMPLETED" => Self::Completed,
+            b"IN-PROCESS" => Self::InProcess,
+            _ => {
+                return Err(ParseError::Parameter {
+                    expected: "PARTSTAT value for VTODO".into(),
+                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
+                });
+            }
+        };
+        Ok(r)
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
+impl Parameter for PartStatJournal {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"PARTSTAT")?;
+        let r = match v {
+            b"NEEDS-ACTION" => Self::NeedsAction,
+            b"ACCEPTED" => Self::Accepted,
+            b"DECLINED" => Self::Declined,
+            _ => {
+                return Err(ParseError::Parameter {
+                    expected: "PARTSTAT value for VJOURNAL".into(),
+                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
+                });
+            }
+        };
+        Ok(r)
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
+impl Parameter for Rsvp {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"RSVP")?;
+        Ok(Self(v.try_into()?))
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
+impl Parameter for SentBy {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"SENT-BY")?;
+        Ok(Self(strip_quoted_string(v)?.try_into()?))
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
+impl Parameter for TimeZoneIdentifier {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"TZID")?;
+        let s = std::str::from_utf8(v)?;
+        let tz: Tz = s.parse().map_err(|_| ParseError::Parameter {
+            expected: "IANA timezone identifier".into(),
+            received: Some(s.into()),
+        })?;
+        Ok(Self(tz))
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
+impl Parameter for RelationshipType {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"RELTYPE")?;
+        let r = match v {
+            b"PARENT" => Self::Parent,
+            b"CHILD" => Self::Child,
+            b"SIBLING" => Self::Sibling,
+            _ => {
+                return Err(ParseError::Parameter {
+                    expected: "RELTYPE value".into(),
+                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
+                });
+            }
+        };
+        Ok(r)
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
+impl Parameter for AlarmTriggerRelationship {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"RELATED")?;
+        let r = match v {
+            b"START" => Self::Start,
+            b"END" => Self::End,
+            _ => {
+                return Err(ParseError::Parameter {
+                    expected: "START or END".into(),
+                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
+                });
+            }
+        };
+        Ok(r)
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}
+
+impl Parameter for RecurrenceIdentifierRange {
+    fn parse(b: Bytes) -> ParseResult<Self> {
+        let (n, v) = split_once(&b, b'=')?;
+        match_name(n, b"RANGE")?;
+        match v {
+            b"THISANDFUTURE" => Ok(Self::ThisAndFuture),
+            _ => Err(ParseError::Parameter {
+                expected: "THISANDFUTURE".into(),
+                received: std::str::from_utf8(v).ok().map(|s| s.into()),
+            }),
+        }
+    }
+
+    fn write(&self, _w: impl Write) -> ParseResult<()> {
+        todo!()
+    }
+}

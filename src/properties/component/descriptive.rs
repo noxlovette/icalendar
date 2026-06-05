@@ -107,8 +107,9 @@ pub enum Classification {
 ///
 /// Example:
 ///
-/// > COMMENT:The meeting really needs to include both the director and the vice-
-/// >  president of the division.
+/// > COMMENT:The meeting really needs to include both the director and the
+/// > vice-
+/// > president of the division.
 ///
 /// [Section 3.8.1.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.4)
 pub struct Comment {

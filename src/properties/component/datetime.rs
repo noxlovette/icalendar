@@ -105,7 +105,8 @@ pub enum Transp {
 mod params {
     use crate::params::Fbtype;
 
-    /// Parameter bundle for [`FreeBusyTime`] carrying the free/busy interval type.
+    /// Parameter bundle for [`FreeBusyTime`] carrying the free/busy interval
+    /// type.
     #[derive(Default)]
     pub struct FreeBusyParams {
         fbtype: Option<Fbtype>,
