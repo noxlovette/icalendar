@@ -1,20 +1,11 @@
 pub use crate::values::Recur;
 use crate::{
     ParseError, ParseResult,
-    internal::{match_name, split_once, strip_quoted_string},
+    internal::strip_quoted_string,
     values::{Boolean, CalendarUserAddress, MediaType, Text, Uri},
 };
-use bytes::Bytes;
 use chrono_tz::Tz;
 use std::io::Write;
-
-/// This trait defines a parameter as a functional entity
-pub trait Parameter: Sized {
-    /// Writes the param as output in bytes
-    fn write(&self, w: impl Write) -> ParseResult<()>;
-    /// Parses anything that implements Read and returns the parsed parameter
-    fn parse(b: Bytes) -> ParseResult<Self>;
-}
 
 /// Any property parameter defined in Section 3.2 of RFC 5545.
 ///
@@ -89,16 +80,57 @@ pub enum PropertyParams {
 }
 
 impl PropertyParams {
-    fn parse(b: &Bytes) -> ParseResult<Vec<Self>> {
+    fn parse(b: &[u8]) -> ParseResult<Vec<Self>> {
+        use crate::internal::split_once;
+        let mut out = Vec::new();
         // need to split by SEMICOLON BUT a SEMICOLON that is NOT in DOUBLE QUOTES
-        todo!()
+        for s in b.split(|b| *b == b';') {
+            let (n, v) = split_once(s, b'=')?;
+            let res = match n {
+                b"ALTREP" => Self::Altrep(v.try_into()?),
+                b"CN" => Self::CommonName(v.try_into()?),
+                b"CUTYPE" => Self::CalendarUserType(v.try_into()?),
+                b"DELEGATED-FROM" => Self::Delegators(v.try_into()?),
+                b"DELEGATED-TO" => Self::Delegatees(v.try_into()?),
+                b"DIR" => Self::DirectoryEntryReference(v.try_into()?),
+                b"ENCODING" => Self::Encoding(v.try_into()?),
+                b"FMTTYPE" => Self::Fmttype(v.try_into()?),
+                b"FBTYPE" => Self::Fbtype(v.try_into()?),
+                b"LANGUAGE" => Self::Language(v.try_into()?),
+                b"MEMBER" => Self::Member(v.try_into()?),
+                b"PARTSTAT" => Self::ParticipationStatus(v.try_into()?),
+                b"RANGE" => Self::RecurrenceIdentifierRange(v.try_into()?),
+                b"RELATED" => Self::AlarmTriggerRelationship(v.try_into()?),
+                b"RELTYPE" => Self::RelationshipType(v.try_into()?),
+                b"ROLE" => Self::ParticipationRole(v.try_into()?),
+                b"RSVP" => Self::Rsvp(v.try_into()?),
+                b"SENT-BY" => Self::SentBy(v.try_into()?),
+                b"TZID" => Self::TimeZoneIdentifier(v.try_into()?),
+                b"VALUE" => Self::DataTypes(v.try_into()?),
+                x => {
+                    if x.to_ascii_uppercase().starts_with(b"X-") {
+                        Self::XName {
+                            name: x.try_into()?,
+                            value: v.try_into()?,
+                        }
+                    } else {
+                        Self::Iana {
+                            name: x.try_into()?,
+                            value: v.try_into()?,
+                        }
+                    }
+                }
+            };
+            out.push(res);
+        }
+        Ok(out)
     }
 }
 
 pub use internal::*;
 mod internal {
     use crate::{
-        params::{Altrep, DataTypes, Language, Parameter, TimeZoneIdentifier},
+        params::{Altrep, DataTypes, Language, TimeZoneIdentifier},
         values::Text,
     };
     use std::collections::HashMap;
@@ -177,12 +209,11 @@ pub enum DataTypes {
     Iana(Text),
 }
 
-impl Parameter for DataTypes {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"VALUE")?;
+impl TryFrom<&[u8]> for DataTypes {
+    type Error = ParseError;
 
-        let r = match v {
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        let r = match b {
             b"BINARY" => Self::Binary,
             b"URI" => Self::Uri,
             b"TEXT" => Self::Text,
@@ -205,12 +236,7 @@ impl Parameter for DataTypes {
                 }
             }
         };
-
         Ok(r)
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
     }
 }
 
@@ -228,17 +254,11 @@ impl Parameter for DataTypes {
 /// [Section 3.2.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.1)
 pub struct Altrep(Uri);
 
-impl Parameter for Altrep {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"ALTREP")?;
-        let stripped = strip_quoted_string(v)?;
+impl TryFrom<&[u8]> for Altrep {
+    type Error = ParseError;
 
-        Ok(Self(stripped.try_into()?))
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(strip_quoted_string(b)?.try_into()?))
     }
 }
 
@@ -256,16 +276,11 @@ impl Parameter for Altrep {
 /// [Section 3.2.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.2)
 pub struct CommonName(Text);
 
-impl Parameter for CommonName {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"CN")?;
+impl TryFrom<&[u8]> for CommonName {
+    type Error = ParseError;
 
-        Ok(Self(strip_quoted_string(v)?.try_into()?))
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(strip_quoted_string(b)?.try_into()?))
     }
 }
 
@@ -284,22 +299,15 @@ impl Parameter for CommonName {
 /// [Section 3.2.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.4)
 pub struct Delegators(Vec<CalendarUserAddress>);
 
-impl Parameter for Delegators {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"DELEGATED-FROM")?;
+impl TryFrom<&[u8]> for Delegators {
+    type Error = ParseError;
 
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let mut vec = Vec::new();
-        for s in v.split(|b| *b == b',') {
-            let stripped = strip_quoted_string(s)?;
-            vec.push(stripped.try_into()?);
+        for s in b.split(|b| *b == b',') {
+            vec.push(strip_quoted_string(s)?.try_into()?);
         }
-
         Ok(Self(vec))
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
     }
 }
 /// This parameter can be specified on properties with a
@@ -317,22 +325,15 @@ impl Parameter for Delegators {
 /// [Section 3.2.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.5)
 pub struct Delegatees(Vec<CalendarUserAddress>);
 
-impl Parameter for Delegatees {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"DELEGATED-TO")?;
+impl TryFrom<&[u8]> for Delegatees {
+    type Error = ParseError;
 
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let mut vec = Vec::new();
-        for s in v.split(|b| *b == b',') {
-            let stripped = strip_quoted_string(s)?;
-            vec.push(stripped.try_into()?);
+        for s in b.split(|b| *b == b',') {
+            vec.push(strip_quoted_string(s)?.try_into()?);
         }
-
         Ok(Self(vec))
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
     }
 }
 
@@ -349,17 +350,11 @@ impl Parameter for Delegatees {
 #[derive(Debug)]
 pub struct DirectoryEntryReference(Uri);
 
-impl Parameter for DirectoryEntryReference {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"DIR")?;
-        let stripped = strip_quoted_string(v)?;
+impl TryFrom<&[u8]> for DirectoryEntryReference {
+    type Error = ParseError;
 
-        Ok(Self(stripped.try_into()?))
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(strip_quoted_string(b)?.try_into()?))
     }
 }
 
@@ -382,29 +377,18 @@ pub enum Encoding {
     Base64,
 }
 
-impl Parameter for Encoding {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"ENCODING")?;
+impl TryFrom<&[u8]> for Encoding {
+    type Error = ParseError;
 
-        let r = match v {
-            b"BASE64" => Self::Base64,
-            b"8BIT" => Self::Bit8,
-            _ => {
-                return Err(ParseError::Parameter {
-                    expected: "BASE64 or 8BIT".into(),
-                    received: std::str::from_utf8(b.as_ref())
-                        .ok()
-                        .map(|s| s.into()),
-                });
-            }
-        };
-
-        Ok(r)
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        match b {
+            b"BASE64" => Ok(Self::Base64),
+            b"8BIT" => Ok(Self::Bit8),
+            _ => Err(ParseError::Parameter {
+                expected: "BASE64 or 8BIT".into(),
+                received: std::str::from_utf8(b).ok().map(|s| s.into()),
+            }),
+        }
     }
 }
 
@@ -425,16 +409,11 @@ impl Parameter for Encoding {
 /// [Section 3.2.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.8)
 pub struct Fmttype(MediaType);
 
-impl Parameter for Fmttype {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"FMTTYPE")?;
+impl TryFrom<&[u8]> for Fmttype {
+    type Error = ParseError;
 
-        Ok(Self(v.try_into()?))
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(b.try_into()?))
     }
 }
 
@@ -471,12 +450,11 @@ pub enum Fbtype {
     Iana(Text),
 }
 
-impl Parameter for Fbtype {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"FBTYPE")?;
+impl TryFrom<&[u8]> for Fbtype {
+    type Error = ParseError;
 
-        let r = match v {
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        let r = match b {
             b"FREE" => Self::Free,
             b"BUSY" => Self::Busy,
             b"BUSY-UNAVAILABLE" => Self::BusyUnavailable,
@@ -489,12 +467,7 @@ impl Parameter for Fbtype {
                 }
             }
         };
-
         Ok(r)
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
     }
 }
 
@@ -519,18 +492,14 @@ impl Parameter for Fbtype {
 /// [Section 3.2.10](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.10)
 pub struct Language(langtag::LangTagBuf);
 
-impl Parameter for Language {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"LANGUAGE")?;
+impl TryFrom<&[u8]> for Language {
+    type Error = ParseError;
+
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(
-            langtag::LangTagBuf::from_bytes(v.to_vec())
+            langtag::LangTagBuf::from_bytes(b.to_vec())
                 .map_err(|_| ParseError::Language)?,
         ))
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
     }
 }
 
@@ -545,21 +514,15 @@ impl Parameter for Language {
 /// [Section 3.2.11](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.11)
 pub struct Member(Vec<CalendarUserAddress>);
 
-impl Parameter for Member {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"MEMBER")?;
+impl TryFrom<&[u8]> for Member {
+    type Error = ParseError;
 
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let mut vec = Vec::new();
-        for el in v.split(|b| *b == b',') {
+        for el in b.split(|b| *b == b',') {
             vec.push(strip_quoted_string(el)?.try_into()?);
         }
-
         Ok(Self(vec))
-    }
-
-    fn write(&self, w: impl Write) -> ParseResult<()> {
-        todo!()
     }
 }
 
@@ -614,6 +577,27 @@ pub enum ParticipationStatus {
     Journal(PartStatJournal),
     X(Text),
     Iana(Text),
+}
+
+impl TryFrom<&[u8]> for ParticipationStatus {
+    type Error = ParseError;
+
+    // COMPLETED and IN-PROCESS are VTODO-only; everything else is routed through
+    // PartStatEvent, which covers the common superset (NEEDS-ACTION, ACCEPTED,
+    // DECLINED, TENTATIVE, DELEGATED) shared across VEVENT and VJOURNAL.
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        match b {
+            b"COMPLETED" => Ok(Self::Todo(PartStatTodo::Completed)),
+            b"IN-PROCESS" => Ok(Self::Todo(PartStatTodo::InProcess)),
+            x if x.to_ascii_uppercase().starts_with(b"X-") => {
+                Ok(Self::X(x.try_into()?))
+            }
+            x => match PartStatEvent::try_from(x) {
+                Ok(s) => Ok(Self::Event(s)),
+                Err(_) => Ok(Self::Iana(x.try_into()?)),
+            },
+        }
+    }
 }
 
 /// This parameter can be specified on properties with a
@@ -856,11 +840,11 @@ pub enum RecurrenceIdentifierRange {
 /// [`crate::RecurrenceSet`].
 pub type Range = RecurrenceIdentifierRange;
 
-impl Parameter for CalendarUserType {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"CUTYPE")?;
-        let r = match v {
+impl TryFrom<&[u8]> for CalendarUserType {
+    type Error = ParseError;
+
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        let r = match b {
             b"INDIVIDUAL" => Self::Individual,
             b"GROUP" => Self::Group,
             b"RESOURCE" => Self::Resource,
@@ -876,17 +860,13 @@ impl Parameter for CalendarUserType {
         };
         Ok(r)
     }
-
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
-    }
 }
 
-impl Parameter for ParticipationRole {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"ROLE")?;
-        let r = match v {
+impl TryFrom<&[u8]> for ParticipationRole {
+    type Error = ParseError;
+
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        let r = match b {
             b"CHAIR" => Self::Chair,
             b"REQ-PARTICIPANT" => Self::ReqParticipant,
             b"OPT-PARTICIPANT" => Self::OptParticipant,
@@ -901,17 +881,13 @@ impl Parameter for ParticipationRole {
         };
         Ok(r)
     }
-
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
-    }
 }
 
-impl Parameter for PartStatEvent {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"PARTSTAT")?;
-        let r = match v {
+impl TryFrom<&[u8]> for PartStatEvent {
+    type Error = ParseError;
+
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        let r = match b {
             b"NEEDS-ACTION" => Self::NeedsAction,
             b"ACCEPTED" => Self::Accepted,
             b"DECLINED" => Self::Declined,
@@ -927,17 +903,13 @@ impl Parameter for PartStatEvent {
         };
         Ok(r)
     }
-
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
-    }
 }
 
-impl Parameter for PartStatTodo {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"PARTSTAT")?;
-        let r = match v {
+impl TryFrom<&[u8]> for PartStatTodo {
+    type Error = ParseError;
+
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        let r = match b {
             b"NEEDS-ACTION" => Self::NeedsAction,
             b"ACCEPTED" => Self::Accepted,
             b"DECLINED" => Self::Declined,
@@ -955,17 +927,13 @@ impl Parameter for PartStatTodo {
         };
         Ok(r)
     }
-
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
-    }
 }
 
-impl Parameter for PartStatJournal {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"PARTSTAT")?;
-        let r = match v {
+impl TryFrom<&[u8]> for PartStatJournal {
+    type Error = ParseError;
+
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        let r = match b {
             b"NEEDS-ACTION" => Self::NeedsAction,
             b"ACCEPTED" => Self::Accepted,
             b"DECLINED" => Self::Declined,
@@ -979,59 +947,42 @@ impl Parameter for PartStatJournal {
         };
         Ok(r)
     }
+}
 
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
+impl TryFrom<&[u8]> for Rsvp {
+    type Error = ParseError;
+
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(b.try_into()?))
     }
 }
 
-impl Parameter for Rsvp {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"RSVP")?;
-        Ok(Self(v.try_into()?))
-    }
+impl TryFrom<&[u8]> for SentBy {
+    type Error = ParseError;
 
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(strip_quoted_string(b)?.try_into()?))
     }
 }
 
-impl Parameter for SentBy {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"SENT-BY")?;
-        let stripped = strip_quoted_string(v)?;
-        Ok(Self(stripped.try_into()?))
-    }
+impl TryFrom<&[u8]> for TimeZoneIdentifier {
+    type Error = ParseError;
 
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
-    }
-}
-
-impl Parameter for TimeZoneIdentifier {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"TZID")?;
-        let s = std::str::from_utf8(v)?;
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        let s = std::str::from_utf8(b)?;
         let tz: Tz = s.parse().map_err(|_| ParseError::Parameter {
             expected: "IANA timezone identifier".into(),
             received: Some(s.into()),
         })?;
         Ok(Self(tz))
     }
-
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
-    }
 }
 
-impl Parameter for RelationshipType {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"RELTYPE")?;
-        let r = match v {
+impl TryFrom<&[u8]> for RelationshipType {
+    type Error = ParseError;
+
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        let r = match b {
             b"PARENT" => Self::Parent,
             b"CHILD" => Self::Child,
             b"SIBLING" => Self::Sibling,
@@ -1045,476 +996,33 @@ impl Parameter for RelationshipType {
         };
         Ok(r)
     }
-
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
-    }
 }
 
-impl Parameter for AlarmTriggerRelationship {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"RELATED")?;
-        let r = match v {
-            b"START" => Self::Start,
-            b"END" => Self::End,
-            _ => {
-                return Err(ParseError::Parameter {
-                    expected: "START or END".into(),
-                    received: std::str::from_utf8(v).ok().map(|s| s.into()),
-                });
-            }
-        };
-        Ok(r)
-    }
+impl TryFrom<&[u8]> for AlarmTriggerRelationship {
+    type Error = ParseError;
 
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
-    }
-}
-
-impl Parameter for RecurrenceIdentifierRange {
-    fn parse(b: Bytes) -> ParseResult<Self> {
-        let (n, v) = split_once(&b, b'=')?;
-        match_name(n, b"RANGE")?;
-        match v {
-            b"THISANDFUTURE" => Ok(Self::ThisAndFuture),
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        match b {
+            b"START" => Ok(Self::Start),
+            b"END" => Ok(Self::End),
             _ => Err(ParseError::Parameter {
-                expected: "THISANDFUTURE".into(),
-                received: std::str::from_utf8(v).ok().map(|s| s.into()),
+                expected: "START or END".into(),
+                received: std::str::from_utf8(b).ok().map(|s| s.into()),
             }),
         }
     }
-
-    fn write(&self, _w: impl Write) -> ParseResult<()> {
-        todo!()
-    }
 }
 
-#[cfg(test)]
-mod tests {
-    use bytes::Bytes;
-
-    use super::*;
-
-    fn b(s: &'static [u8]) -> Bytes {
-        Bytes::from_static(s)
-    }
-
-    // DataTypes
-
-    #[test]
-    fn data_types_ok() {
-        let v = DataTypes::parse(b(b"VALUE=DATE-TIME")).unwrap();
-        assert!(matches!(v, DataTypes::DateTime));
-    }
-
-    #[test]
-    fn data_types_wrong_name() {
-        assert!(DataTypes::parse(b(b"TYPE=DATE-TIME")).is_err());
-    }
-
-    // Altrep
-
-    #[test]
-    fn altrep_ok() {
-        let v = Altrep::parse(b(b"ALTREP=\"http://example.com/cal\""));
-        assert!(v.is_ok());
-    }
-
-    #[test]
-    fn altrep_wrong_name() {
-        assert!(Altrep::parse(b(b"Meow=\"http://example.com/cal\"")).is_err());
-    }
-
-    // CommonName
-
-    #[test]
-    fn common_name_ok() {
-        let v = CommonName::parse(b(b"CN=\"John Smith\""));
-        assert!(v.is_ok());
-    }
-
-    #[test]
-    fn common_name_wrong_name() {
-        assert!(CommonName::parse(b(b"Meow=\"John Smith\"")).is_err());
-    }
-
-    // Delegators
-
-    #[test]
-    fn delegators_ok() {
-        let v = Delegators::parse(b(
-            b"DELEGATED-FROM=\"mailto:a@example.com\",\"mailto:b@example.com\"",
-        ));
-        assert!(v.is_ok());
-    }
-
-    #[test]
-    fn delegators_wrong_name() {
-        assert!(
-            Delegators::parse(b(b"DELEGATED-TO=\"mailto:a@example.com\""))
-                .is_err()
-        );
-    }
-
-    // Delegatees
-
-    #[test]
-    fn delegatees_ok() {
-        let v =
-            Delegatees::parse(b(b"DELEGATED-TO=\"mailto:jdoe@example.com\""));
-        assert!(v.is_ok());
-    }
-
-    #[test]
-    fn delegatees_wrong_name() {
-        assert!(
-            Delegatees::parse(b(b"DELEGATED-FROM=\"mailto:jdoe@example.com\""))
-                .is_err()
-        );
-    }
-
-    // DirectoryEntryReference
-
-    #[test]
-    fn dir_ok() {
-        let v = DirectoryEntryReference::parse(b(
-            b"DIR=\"http://example.com/dir\"",
-        ));
-        assert!(v.is_ok());
-    }
-
-    #[test]
-    fn dir_wrong_name() {
-        assert!(
-            DirectoryEntryReference::parse(b(
-                b"ALTREP=\"http://example.com/dir\""
-            ))
-            .is_err()
-        );
-    }
-
-    // Encoding
-
-    #[test]
-    fn encoding_ok() {
-        let v = Encoding::parse(b(b"ENCODING=BASE64")).unwrap();
-        assert!(matches!(v, Encoding::Base64));
-    }
-
-    #[test]
-    fn encoding_invalid_value() {
-        assert!(Encoding::parse(b(b"ENCODING=QUOTED-PRINTABLE")).is_err());
-    }
-
-    // Fmttype
-
-    #[test]
-    fn fmttype_ok() {
-        let v = Fmttype::parse(b(b"FMTTYPE=application/msword"));
-        assert!(v.is_ok());
-    }
-
-    #[test]
-    fn fmttype_no_slash() {
-        assert!(Fmttype::parse(b(b"FMTTYPE=application")).is_err());
-    }
-
-    // Fbtype
-
-    #[test]
-    fn fbtype_ok() {
-        let v = Fbtype::parse(b(b"FBTYPE=BUSY-UNAVAILABLE")).unwrap();
-        assert!(matches!(v, Fbtype::BusyUnavailable));
-    }
-
-    // Language
-
-    #[test]
-    fn language_ok() {
-        let v = Language::parse(b(b"LANGUAGE=en-US"));
-        assert!(v.is_ok());
-    }
-
-    #[test]
-    fn language_invalid_tag() {
-        assert!(Language::parse(b(b"LANGUAGE=!!!")).is_err());
-    }
-
-    // Member
-
-    #[test]
-    fn member_ok() {
-        let v = Member::parse(b(b"MEMBER=\"mailto:jsmith@example.com\""));
-        assert!(v.is_ok());
-    }
-
-    #[test]
-    fn member_unquoted() {
-        assert!(Member::parse(b(b"MEMBER=mailto:jsmith@example.com")).is_err());
-    }
-
-    // CalendarUserType
-
-    #[test]
-    fn cutype_ok() {
-        let v = CalendarUserType::parse(b(b"CUTYPE=ROOM")).unwrap();
-        assert!(matches!(v, CalendarUserType::Room));
-    }
-
-    // ParticipationRole
-
-    #[test]
-    fn role_ok() {
-        let v = ParticipationRole::parse(b(b"ROLE=CHAIR")).unwrap();
-        assert!(matches!(v, ParticipationRole::Chair));
-    }
-
-    // PartStatEvent
-
-    #[test]
-    fn partstat_event_ok() {
-        let v = PartStatEvent::parse(b(b"PARTSTAT=DECLINED")).unwrap();
-        assert!(matches!(v, PartStatEvent::Declined));
-    }
-
-    // PartStatTodo
-
-    #[test]
-    fn partstat_todo_ok() {
-        let v = PartStatTodo::parse(b(b"PARTSTAT=IN-PROCESS")).unwrap();
-        assert!(matches!(v, PartStatTodo::InProcess));
-    }
-
-    // PartStatJournal
-
-    #[test]
-    fn partstat_journal_ok() {
-        let v = PartStatJournal::parse(b(b"PARTSTAT=ACCEPTED")).unwrap();
-        assert!(matches!(v, PartStatJournal::Accepted));
-    }
-
-    // Rsvp
-
-    #[test]
-    fn rsvp_ok() {
-        let v = Rsvp::parse(b(b"RSVP=TRUE")).unwrap();
-        assert!(*v.0);
-    }
-
-    #[test]
-    fn rsvp_invalid_value() {
-        assert!(Rsvp::parse(b(b"RSVP=MAYBE")).is_err());
-    }
-
-    // SentBy
-
-    #[test]
-    fn sent_by_ok() {
-        let v = SentBy::parse(b(b"SENT-BY=\"mailto:proxy@example.com\""));
-        assert!(v.is_ok());
-    }
-
-    #[test]
-    fn sent_by_unquoted() {
-        assert!(SentBy::parse(b(b"SENT-BY=mailto:proxy@example.com")).is_err());
-    }
-
-    // TimeZoneIdentifier
-
-    #[test]
-    fn tzid_ok() {
-        let v = TimeZoneIdentifier::parse(b(b"TZID=America/New_York"));
-        assert!(v.is_ok());
-    }
-
-    #[test]
-    fn tzid_unknown_timezone() {
-        assert!(TimeZoneIdentifier::parse(b(b"TZID=Not/A/Timezone")).is_err());
-    }
-
-    // RelationshipType
-
-    #[test]
-    fn reltype_ok() {
-        let v = RelationshipType::parse(b(b"RELTYPE=SIBLING")).unwrap();
-        assert!(matches!(v, RelationshipType::Sibling));
-    }
-
-    // AlarmTriggerRelationship
-
-    #[test]
-    fn alarm_related_ok() {
-        let v = AlarmTriggerRelationship::parse(b(b"RELATED=END")).unwrap();
-        assert!(matches!(v, AlarmTriggerRelationship::End));
-    }
-
-    #[test]
-    fn alarm_related_invalid_value() {
-        assert!(AlarmTriggerRelationship::parse(b(b"RELATED=MIDDLE")).is_err());
-    }
-
-    // RecurrenceIdentifierRange
-
-    #[test]
-    fn range_ok() {
-        let v = RecurrenceIdentifierRange::parse(b(b"RANGE=THISANDFUTURE"))
-            .unwrap();
-        assert!(matches!(v, RecurrenceIdentifierRange::ThisAndFuture));
-    }
-
-    #[test]
-    fn range_deprecated_value() {
-        assert!(
-            RecurrenceIdentifierRange::parse(b(b"RANGE=THISANDPRIOR")).is_err()
-        );
-    }
-
-    // x-name and iana-token fallthrough
-
-    #[test]
-    fn data_types_xname() {
-        let v = DataTypes::parse(b(b"VALUE=X-VENDOR-MYTYPE")).unwrap();
-        assert!(matches!(v, DataTypes::XName(_)));
-    }
-
-    #[test]
-    fn data_types_xname_lowercase_prefix() {
-        // Detection is case-insensitive: "x-" must also route to XName
-        let v = DataTypes::parse(b(b"VALUE=x-vendor-mytype")).unwrap();
-        assert!(matches!(v, DataTypes::XName(_)));
-    }
-
-    #[test]
-    fn data_types_iana() {
-        let v = DataTypes::parse(b(b"VALUE=MY-CUSTOM-TYPE")).unwrap();
-        assert!(matches!(v, DataTypes::Iana(_)));
-    }
-
-    #[test]
-    fn fbtype_xname() {
-        let v = Fbtype::parse(b(b"FBTYPE=X-VENDOR-BUSY")).unwrap();
-        assert!(matches!(v, Fbtype::X(_)));
-    }
-
-    #[test]
-    fn fbtype_xname_lowercase_prefix() {
-        let v = Fbtype::parse(b(b"FBTYPE=x-vendor-busy")).unwrap();
-        assert!(matches!(v, Fbtype::X(_)));
-    }
-
-    #[test]
-    fn fbtype_iana() {
-        let v = Fbtype::parse(b(b"FBTYPE=BUSY-CONDITIONAL")).unwrap();
-        assert!(matches!(v, Fbtype::Iana(_)));
-    }
-
-    #[test]
-    fn cutype_xname() {
-        let v = CalendarUserType::parse(b(b"CUTYPE=X-DEVICE")).unwrap();
-        assert!(matches!(v, CalendarUserType::X(_)));
-    }
-
-    #[test]
-    fn cutype_xname_lowercase_prefix() {
-        let v = CalendarUserType::parse(b(b"CUTYPE=x-device")).unwrap();
-        assert!(matches!(v, CalendarUserType::X(_)));
-    }
-
-    #[test]
-    fn cutype_iana() {
-        let v = CalendarUserType::parse(b(b"CUTYPE=ORG-UNIT")).unwrap();
-        assert!(matches!(v, CalendarUserType::Iana(_)));
-    }
-
-    #[test]
-    fn role_xname() {
-        let v = ParticipationRole::parse(b(b"ROLE=X-MODERATOR")).unwrap();
-        assert!(matches!(v, ParticipationRole::X(_)));
-    }
-
-    #[test]
-    fn role_xname_lowercase_prefix() {
-        let v = ParticipationRole::parse(b(b"ROLE=x-moderator")).unwrap();
-        assert!(matches!(v, ParticipationRole::X(_)));
-    }
-
-    #[test]
-    fn role_iana() {
-        let v = ParticipationRole::parse(b(b"ROLE=PRESENTER")).unwrap();
-        assert!(matches!(v, ParticipationRole::Iana(_)));
-    }
-
-    #[test]
-    fn partstat_event_xname() {
-        let v = PartStatEvent::parse(b(b"PARTSTAT=X-PENDING")).unwrap();
-        assert!(matches!(v, PartStatEvent::X(_)));
-    }
-
-    #[test]
-    fn partstat_event_xname_lowercase_prefix() {
-        let v = PartStatEvent::parse(b(b"PARTSTAT=x-pending")).unwrap();
-        assert!(matches!(v, PartStatEvent::X(_)));
-    }
-
-    #[test]
-    fn partstat_event_iana() {
-        let v = PartStatEvent::parse(b(b"PARTSTAT=CONFIRMED")).unwrap();
-        assert!(matches!(v, PartStatEvent::Iana(_)));
-    }
-
-    #[test]
-    fn partstat_todo_xname() {
-        let v = PartStatTodo::parse(b(b"PARTSTAT=X-BLOCKED")).unwrap();
-        assert!(matches!(v, PartStatTodo::X(_)));
-    }
-
-    #[test]
-    fn partstat_todo_xname_lowercase_prefix() {
-        let v = PartStatTodo::parse(b(b"PARTSTAT=x-blocked")).unwrap();
-        assert!(matches!(v, PartStatTodo::X(_)));
-    }
-
-    #[test]
-    fn partstat_todo_iana() {
-        let v = PartStatTodo::parse(b(b"PARTSTAT=CONFIRMED")).unwrap();
-        assert!(matches!(v, PartStatTodo::Iana(_)));
-    }
-
-    #[test]
-    fn partstat_journal_xname() {
-        let v = PartStatJournal::parse(b(b"PARTSTAT=X-DRAFT")).unwrap();
-        assert!(matches!(v, PartStatJournal::X(_)));
-    }
-
-    #[test]
-    fn partstat_journal_xname_lowercase_prefix() {
-        let v = PartStatJournal::parse(b(b"PARTSTAT=x-draft")).unwrap();
-        assert!(matches!(v, PartStatJournal::X(_)));
-    }
-
-    #[test]
-    fn partstat_journal_iana() {
-        let v = PartStatJournal::parse(b(b"PARTSTAT=CONFIRMED")).unwrap();
-        assert!(matches!(v, PartStatJournal::Iana(_)));
-    }
-
-    #[test]
-    fn reltype_xname() {
-        let v = RelationshipType::parse(b(b"RELTYPE=X-DEPENDS-ON")).unwrap();
-        assert!(matches!(v, RelationshipType::X(_)));
-    }
-
-    #[test]
-    fn reltype_xname_lowercase_prefix() {
-        let v = RelationshipType::parse(b(b"RELTYPE=x-depends-on")).unwrap();
-        assert!(matches!(v, RelationshipType::X(_)));
-    }
-
-    #[test]
-    fn reltype_iana() {
-        let v = RelationshipType::parse(b(b"RELTYPE=FINISHES")).unwrap();
-        assert!(matches!(v, RelationshipType::Iana(_)));
+impl TryFrom<&[u8]> for RecurrenceIdentifierRange {
+    type Error = ParseError;
+
+    fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
+        match b {
+            b"THISANDFUTURE" => Ok(Self::ThisAndFuture),
+            _ => Err(ParseError::Parameter {
+                expected: "THISANDFUTURE".into(),
+                received: std::str::from_utf8(b).ok().map(|s| s.into()),
+            }),
+        }
     }
 }

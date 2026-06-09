@@ -3,10 +3,9 @@ use std::ops::Deref;
 use crate::{
     ParseError,
     internal::split_once,
-    params::{Parameter, TimeZoneIdentifier},
+    params::TimeZoneIdentifier,
 };
 use base64::alphabet::Alphabet;
-use bytes::Bytes;
 use chrono::{
     DateTime as ChronoDateTime, Duration as ChronoDuration, FixedOffset,
     NaiveDate, NaiveTime, Utc,
@@ -794,14 +793,3 @@ impl TryFrom<&[u8]> for Boolean {
     }
 }
 
-impl Parameter for () {
-    fn parse(_b: Bytes) -> crate::ParseResult<Self> {
-        Ok(())
-    }
-    fn write(
-        &self,
-        _w: impl std::io::prelude::Write,
-    ) -> crate::ParseResult<()> {
-        Ok(())
-    }
-}
