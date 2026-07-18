@@ -1,3 +1,10 @@
+use crate::ast::params::PropertyParams;
+
+pub trait Property<T> {
+    fn get_params(&self) -> &[PropertyParams];
+    fn get_value(&self) -> &T;
+}
+
 /// The calendar component carried by an [`crate::ICalendar`] object.
 ///
 /// Each variant corresponds to a component type defined in RFC 5545 Section

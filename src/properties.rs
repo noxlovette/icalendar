@@ -6,9 +6,30 @@ mod component;
 pub use calendar::*;
 pub use component::*;
 
-use crate::params::PropertyParams;
+use std::fmt::Debug;
 
-pub trait Property<T> {
-    fn get_params(&self) -> &[PropertyParams];
-    fn get_value(&self) -> &T;
+use crate::values::Text;
+
+/// This trait ensures that all parameters as used in properties have iana and x-name params 100% of the time
+pub trait Params: Default + Debug {
+    fn get_iana(&self) -> &[Text];
+    fn get_xname(&self) -> &[Text];
+}
+
+/// The params that every property has
+///
+/// That is, the IANA and non-standard property parameters
+#[derive(Default, Debug)]
+struct SharedParams {
+    iana: Vec<Text>,
+    xname: Vec<Text>,
+}
+
+impl Params for SharedParams {
+    fn get_iana(&self) -> &[Text] {
+        &self.iana
+    }
+    fn get_xname(&self) -> &[Text] {
+        &self.xname
+    }
 }

@@ -1,7 +1,4 @@
-use crate::{
-    params::Params,
-    values::{DateOrDatetime, DateTimePeriod, Recur},
-};
+use crate::values::{DateOrDatetime, DateTimePeriod, Recur};
 use params::*;
 
 /// This property defines the list of DATE-TIME exceptions for recurring events,

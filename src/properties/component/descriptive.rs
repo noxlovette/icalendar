@@ -1,8 +1,7 @@
 use crate::{
     Pair,
-    params::{
-        Altrep, Encoding, Fmttype, Language, SharedParams, ValueDataType,
-    },
+    params::{Altrep, Encoding, Fmttype, Language, ValueDataType},
+    properties::SharedParams,
     values::{Float, Integer, Text},
 };
 

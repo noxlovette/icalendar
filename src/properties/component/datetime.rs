@@ -1,7 +1,15 @@
 use crate::{
-    params::Params,
+    params::{Fbtype, TimeZoneIdentifier, ValueDataType},
+    properties::SharedParams,
     values::{DateOrDatetime, DateTime, Duration as DurationV, Period},
 };
+
+/// These params are shared by this module's component properties
+struct DateTimeParams {
+    shared: SharedParams,
+    value_data_type: Option<ValueDataType>,
+    tz_identifier: Option<TimeZoneIdentifier>,
+}
 
 /// This property defines the date and time that a to-do was actually
 /// completed.
@@ -13,7 +21,7 @@ use crate::{
 /// [Section 3.8.2.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.1)
 pub struct Completed {
     value: DateTime,
-    params: Params,
+    params: SharedParams,
 }
 
 /// This property specifies the date and time that a calendar component ends.
@@ -27,7 +35,7 @@ pub struct Completed {
 /// [Section 3.8.2.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.2)
 pub struct DateTimeEnd {
     value: DateOrDatetime,
-    params: Params,
+    params: DateTimeParams,
 }
 
 /// This property defines the date and time that a to-do is expected to be
@@ -40,7 +48,7 @@ pub struct DateTimeEnd {
 /// [Section 3.8.2.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.3)
 pub struct DateTimeDue {
     value: DateOrDatetime,
-    params: Params,
+    params: DateTimeParams,
 }
 
 /// This property specifies when the calendar component begins.
@@ -52,7 +60,7 @@ pub struct DateTimeDue {
 /// [Section 3.8.2.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.4)
 pub struct DateTimeStart {
     value: DateOrDatetime,
-    params: Params,
+    params: DateTimeParams,
 }
 
 /// This property specifies a positive duration of time.
@@ -64,7 +72,7 @@ pub struct DateTimeStart {
 /// [Section 3.8.2.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.5)
 pub struct Duration {
     value: DurationV,
-    params: Params,
+    params: SharedParams,
 }
 
 /// This property defines one or more free or busy time intervals.
@@ -76,7 +84,12 @@ pub struct Duration {
 /// [Section 3.8.2.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.6)
 pub struct FreeBusyTime {
     value: Period,
-    params: Params,
+    params: FreeBusyTimeParams,
+}
+
+struct FreeBusyTimeParams {
+    shared: SharedParams,
+    fb_time_type: Fbtype,
 }
 
 /// This property defines whether or not an event is transparent to busy time
@@ -88,27 +101,16 @@ pub struct FreeBusyTime {
 ///
 /// [Section 3.8.2.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.7)
 pub struct TimeTransparency {
-    value: Transp,
-    params: Params,
+    value: TranspValue,
+    params: SharedParams,
 }
 
 /// Time transparency value for [`TimeTransparency`].
 #[derive(Debug, Default)]
-pub enum Transp {
+pub enum TranspValue {
     /// Event blocks busy-time searches. Default.
     #[default]
     Opaque,
     /// Event does not block busy-time searches.
     Transparent,
-}
-
-mod params {
-    use crate::params::Fbtype;
-
-    /// Parameter bundle for [`FreeBusyTime`] carrying the free/busy interval
-    /// type.
-    #[derive(Default)]
-    pub struct FreeBusyParams {
-        fbtype: Option<Fbtype>,
-    }
 }
