@@ -1,5 +1,3 @@
-use params::*;
-
 use crate::{
     params::Params,
     values::{DateTimeDuration, Integer, Text},
@@ -14,7 +12,7 @@ use crate::{
 /// [Section 3.8.6.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.6.1)
 pub struct Action {
     value: ActionEnum,
-    params: Params<()>,
+    params: Params,
 }
 
 /// Possible alarm actions for [`Action`].
@@ -41,7 +39,7 @@ pub enum ActionEnum {
 /// [Section 3.8.6.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.6.2)
 pub struct Repeat {
     value: Integer,
-    params: Params<()>,
+    params: Params,
 }
 
 /// This property specifies when an alarm will trigger.
@@ -55,19 +53,5 @@ pub struct Repeat {
 /// [Section 3.8.6.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.6.3)
 pub struct Trigger {
     value: DateTimeDuration,
-    params: Params<TriggerParams>,
-}
-
-mod params {
-    use crate::params::{
-        AlarmTriggerRelationship, DataTypes, TimeZoneIdentifier,
-    };
-
-    /// Parameter bundle for [`Trigger`].
-    #[derive(Default)]
-    pub struct TriggerParams {
-        data_type: Option<DataTypes>,
-        tzid: Option<TimeZoneIdentifier>,
-        trigger_relationship: Option<AlarmTriggerRelationship>,
-    }
+    params: Params,
 }

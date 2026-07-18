@@ -11,7 +11,7 @@ repository = "https://github.com/noxlovette/icalendar"
 [dependencies]
 chrono = { version = "0.4.45" }
 base64 = "0.22.1"
-bytes = "1.11.1"
+bytes = "1.12"
 chrono-tz = "0.10.4"
 langtag = "1.1.0"
 nanoid = "0.5.0"

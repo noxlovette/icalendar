@@ -14,7 +14,7 @@ use params::*;
 /// [Section 3.8.5.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.5.1)
 pub struct ExceptionDateTimes {
     value: Vec<DateOrDatetime>,
-    params: Params<Option<DateTimePeriod>>,
+    params: Params,
 }
 
 /// This property defines the list of DATE-TIME values for recurring events,
@@ -27,7 +27,7 @@ pub struct ExceptionDateTimes {
 /// [Section 3.8.5.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.5.2)
 pub struct RecurrenceDateTimes {
     value: Vec<DateTimePeriod>,
-    params: Params<RDateParams>,
+    params: Params,
 }
 
 /// This property defines a rule or repeating pattern for recurring events,
@@ -40,7 +40,7 @@ pub struct RecurrenceDateTimes {
 /// [Section 3.8.5.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.5.3)
 pub struct RRule {
     value: Recur,
-    params: Params<()>,
+    params: Params,
 }
 
 mod params {

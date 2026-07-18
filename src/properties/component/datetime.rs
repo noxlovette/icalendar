@@ -1,8 +1,7 @@
 use crate::{
-    params::{Params, TimeParams},
+    params::Params,
     values::{DateOrDatetime, DateTime, Duration as DurationV, Period},
 };
-use params::*;
 
 /// This property defines the date and time that a to-do was actually
 /// completed.
@@ -14,7 +13,7 @@ use params::*;
 /// [Section 3.8.2.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.1)
 pub struct Completed {
     value: DateTime,
-    params: Params<()>,
+    params: Params,
 }
 
 /// This property specifies the date and time that a calendar component ends.
@@ -28,7 +27,7 @@ pub struct Completed {
 /// [Section 3.8.2.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.2)
 pub struct DateTimeEnd {
     value: DateOrDatetime,
-    params: Params<TimeParams>,
+    params: Params,
 }
 
 /// This property defines the date and time that a to-do is expected to be
@@ -41,7 +40,7 @@ pub struct DateTimeEnd {
 /// [Section 3.8.2.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.3)
 pub struct DateTimeDue {
     value: DateOrDatetime,
-    params: Params<TimeParams>,
+    params: Params,
 }
 
 /// This property specifies when the calendar component begins.
@@ -53,7 +52,7 @@ pub struct DateTimeDue {
 /// [Section 3.8.2.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.4)
 pub struct DateTimeStart {
     value: DateOrDatetime,
-    params: Params<TimeParams>,
+    params: Params,
 }
 
 /// This property specifies a positive duration of time.
@@ -65,7 +64,7 @@ pub struct DateTimeStart {
 /// [Section 3.8.2.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.5)
 pub struct Duration {
     value: DurationV,
-    params: Params<()>,
+    params: Params,
 }
 
 /// This property defines one or more free or busy time intervals.
@@ -77,7 +76,7 @@ pub struct Duration {
 /// [Section 3.8.2.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.6)
 pub struct FreeBusyTime {
     value: Period,
-    params: Params<FreeBusyParams>,
+    params: Params,
 }
 
 /// This property defines whether or not an event is transparent to busy time
@@ -90,7 +89,7 @@ pub struct FreeBusyTime {
 /// [Section 3.8.2.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.7)
 pub struct TimeTransparency {
     value: Transp,
-    params: Params<()>,
+    params: Params,
 }
 
 /// Time transparency value for [`TimeTransparency`].
@@ -102,6 +101,7 @@ pub enum Transp {
     /// Event does not block busy-time searches.
     Transparent,
 }
+
 mod params {
     use crate::params::Fbtype;
 

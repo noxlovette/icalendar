@@ -14,7 +14,7 @@ pub use error::*;
 pub use properties::*;
 pub use rrule::*;
 
-/// Alias for emails
+/// Alias for emails. TODO: enforce email safety
 pub type Email = String;
 
 /// A globally unique identifier for a calendar component.
@@ -22,12 +22,12 @@ pub type Email = String;
 /// Typically generated from the current timestamp and a random suffix so it is
 /// unique across calendar stores.  See [`Uid::new`] for the canonical
 /// constructor.
-pub struct Uid(pub String);
+pub struct Uid(String);
 
 /// A pair of two values of the same type, used for properties such as [`Geo`]
 /// that carry two coordinates.
 #[derive(Debug)]
-pub struct Pair<T>(pub T, pub T);
+pub struct Pair<T>(T, T);
 
 /// A property can have attributes with which it is associated.  These
 /// "property parameters" contain meta-information about the property or

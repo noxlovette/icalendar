@@ -1,6 +1,6 @@
 use crate::{
     Pair,
-    params::{DataTypes, Encoding, Fmttype, Language, Params, TextParams},
+    params::{DataTypes, Encoding, Fmttype, Language, Params},
     values::{Binary, Float, Integer, Text, Uri},
 };
 
@@ -25,14 +25,14 @@ pub enum Attachment {
         /// The URI pointing to the resource.
         value: Uri,
         /// Optional format-type and encoding parameters.
-        params: Params<AttachmentParams>,
+        params: Params,
     },
     /// Attachment with inline BASE64-encoded binary content.
     Binary {
         /// The inline binary data.
         value: Binary,
         /// Encoding and format-type parameters; `ENCODING=BASE64` is required.
-        params: Params<AttachmentParams>,
+        params: Params,
     },
 }
 
@@ -57,7 +57,7 @@ pub struct AttachmentParams {
 /// [Section 3.8.1.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.2)
 pub struct Categories {
     value: Vec<Text>,
-    params: Params<Option<Language>>,
+    params: Params,
 }
 
 /// An access classification is only one component of the general security
@@ -84,23 +84,15 @@ pub struct Categories {
 /// > CLASS:PUBLIC
 ///
 /// [Section 3.8.1.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.3)
-#[derive(Debug)]
-pub enum Classification {
-    /// Publicly accessible.
-    Public {
-        /// Property parameters.
-        params: Params<()>,
-    },
-    /// Restricted to the calendar owner.
-    Private {
-        /// Property parameters.
-        params: Params<()>,
-    },
-    /// Confidential; restricted access.
-    Confidential {
-        /// Property parameters.
-        params: Params<()>,
-    },
+pub struct Classification {
+    value: ClassificationEnum,
+    params: Params,
+}
+
+enum ClassificationEnum {
+    Public,
+    Private,
+    Confidential,
 }
 
 /// This property is used to specify a comment to the calendar user.
@@ -114,7 +106,7 @@ pub enum Classification {
 /// [Section 3.8.1.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.4)
 pub struct Comment {
     value: Text,
-    params: Params<TextParams>,
+    params: Params,
 }
 
 /// This property is used in the "VEVENT" and "VTODO" to capture lengthy
@@ -130,7 +122,7 @@ pub struct Comment {
 /// [Section 3.8.1.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.5)
 pub struct Description {
     value: Text,
-    params: Params<TextParams>,
+    params: Params,
 }
 
 /// This property value specifies latitude and longitude, in that order
@@ -152,7 +144,7 @@ pub struct Description {
 /// [Section 3.8.1.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.6)
 pub struct Geo {
     value: Pair<Float>,
-    params: Params<()>,
+    params: Params,
 }
 
 /// Specific venues such as conference or meeting rooms may be explicitly
@@ -170,7 +162,7 @@ pub struct Geo {
 /// [Section 3.8.1.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.7)
 pub struct Location {
     value: Text,
-    params: TextParams,
+    params: Params,
 }
 
 /// The property value is a positive integer between 0 and 100.  A value of
@@ -189,7 +181,7 @@ pub struct Location {
 /// [Section 3.8.1.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.8)
 pub struct PercentComplete {
     value: Integer,
-    params: Params<()>,
+    params: Params,
 }
 
 /// This priority is specified as an integer in the range 0 to 9.  A value
@@ -214,7 +206,7 @@ pub struct PercentComplete {
 /// [Section 3.8.1.9](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.9)
 pub struct Priority {
     value: Integer,
-    params: Params<()>,
+    params: Params,
 }
 
 /// The property value is an arbitrary text.  More than one resource can be
@@ -227,7 +219,7 @@ pub struct Priority {
 /// [Section 3.8.1.10](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.10)
 pub struct Resources {
     value: Text,
-    params: TextParams,
+    params: Params,
 }
 
 /// In a group-scheduled calendar component, the property is used by the
@@ -251,21 +243,21 @@ pub enum Status {
         /// The event status value.
         value: EventStatus,
         /// Property parameters.
-        params: Params<()>,
+        params: Params,
     },
     /// Status of a `VTODO` component.
     Todo {
         /// The to-do status value.
         value: TodoStatus,
         /// Property parameters.
-        params: Params<()>,
+        params: Params,
     },
     /// Status of a `VJOURNAL` component.
     Journal {
         /// The journal status value.
         value: JourStatus,
         /// Property parameters.
-        params: Params<()>,
+        params: Params,
     },
 }
 
@@ -315,5 +307,5 @@ pub enum JourStatus {
 /// [Section 3.8.1.12](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.12)
 pub struct Summary {
     value: Text,
-    params: TextParams,
+    params: Params,
 }

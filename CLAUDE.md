@@ -2,6 +2,10 @@
 
 A Rust iCalendar (RFC 5545) library.
 
+## Style conventions
+
+If you see a tuple struct like the Uid, NEVER EVER allow it to have its inner type to be PUBLIC
+
 ## Documentation conventions
 
 Every public type and property struct/enum must have a doc comment that:

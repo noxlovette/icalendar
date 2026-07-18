@@ -5,7 +5,9 @@ use crate::{
     values::{Boolean, CalendarUserAddress, MediaType, Text, Uri},
 };
 use chrono_tz::Tz;
-use std::io::Write;
+
+/// Convenience alias for the param vec
+pub type Params = Vec<PropertyParams>;
 
 /// Any property parameter defined in Section 3.2 of RFC 5545.
 ///
@@ -124,41 +126,6 @@ impl PropertyParams {
             out.push(res);
         }
         Ok(out)
-    }
-}
-
-pub use internal::*;
-mod internal {
-    use crate::{
-        params::{Altrep, DataTypes, Language, TimeZoneIdentifier},
-        values::Text,
-    };
-    use std::collections::HashMap;
-
-    /// Convenience wrapper around params
-    #[derive(Debug, Default)]
-    pub struct Params<T> {
-        /// Types defined in the RFC
-        standard: T,
-        /// IANA-registered types
-        iana: HashMap<Text, Text>,
-        /// X-Name Types
-        experimental: HashMap<Text, Text>,
-    }
-
-    /// Convenience type that multiple components share
-    #[derive(Default)]
-    pub struct TextParams {
-        altrep: Option<Altrep>,
-        language: Option<Language>,
-    }
-
-    /// Convenience parameter bundle shared by date/time properties (`DTSTART`,
-    /// `DTEND`, etc.).
-    #[derive(Default)]
-    pub struct TimeParams {
-        vtype: Option<DataTypes>,
-        tzid: Option<TimeZoneIdentifier>,
     }
 }
 

@@ -1,8 +1,5 @@
 use crate::{
-    params::{
-        CommonName, DirectoryEntryReference, Language, Params, SentBy,
-        TextParams,
-    },
+    params::{CommonName, DirectoryEntryReference, Language, Params, SentBy},
     values::{CalendarUserAddress, DateOrDatetime, Text, Uri},
 };
 use params::*;
@@ -17,7 +14,7 @@ use params::*;
 /// [Section 3.8.4.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.1)
 pub struct Attendee {
     value: CalendarUserAddress,
-    params: Params<AttendeeParams>,
+    params: Params,
 }
 
 /// This property is used to represent contact information or alternately a
@@ -30,7 +27,7 @@ pub struct Attendee {
 /// [Section 3.8.4.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.2)
 pub struct Contact {
     value: Text,
-    params: Params<TextParams>,
+    params: Params,
 }
 
 /// This property defines the organizer for a calendar component.
@@ -42,7 +39,7 @@ pub struct Contact {
 /// [Section 3.8.4.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.3)
 pub struct Organizer {
     value: CalendarUserAddress,
-    params: Params<OrgParams>,
+    params: Params,
 }
 
 /// Parameter bundle for [`Organizer`].
@@ -65,7 +62,7 @@ pub struct OrgParams {
 /// [Section 3.8.4.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.4)
 pub struct RecurrenceId {
     value: DateOrDatetime,
-    params: Params<RecurrenceParams>,
+    params: Params,
 }
 
 /// This property is used to represent a relationship or reference between
@@ -79,7 +76,7 @@ pub struct RecurrenceId {
 /// [Section 3.8.4.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.5)
 pub struct RelatedTo {
     value: Uid,
-    params: Params<RtParams>,
+    params: Params,
 }
 
 /// This property defines a Uniform Resource Locator (URL) associated with
@@ -92,7 +89,7 @@ pub struct RelatedTo {
 /// [Section 3.8.4.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.6)
 pub struct UniformResourceLocator {
     value: Uri,
-    params: Params<()>,
+    params: Params,
 }
 
 /// This property defines the persistent, globally unique identifier for the
@@ -108,10 +105,9 @@ pub struct UniformResourceLocator {
 /// > UID:19960401T080045Z-4000F192713-0052@example.com
 ///
 /// [Section 3.8.4.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.7)
-#[derive(Debug)]
 pub struct Uid {
     value: Text,
-    params: Params<()>,
+    params: Params,
 }
 
 mod params {
