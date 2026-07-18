@@ -1,4 +1,4 @@
-use crate::values::Text;
+use crate::{properties::SharedParams, values::Text};
 
 /// This property defines the calendar scale used for the calendar information
 /// specified in the iCalendar object.  This memo is based on the Gregorian
@@ -18,7 +18,10 @@ use crate::values::Text;
 /// > CALSCALE:GREGORIAN
 ///
 /// [Section 3.7.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.7.1)
-pub struct CalendarScale(Text);
+pub struct CalendarScale {
+    value: Text,
+    params: SharedParams,
+}
 
 /// This property defines the iCalendar object method associated with the
 /// calendar object.  When used in a MIME message entity, the value of this
@@ -36,7 +39,10 @@ pub struct CalendarScale(Text);
 /// > METHOD:REQUEST
 ///
 /// [Section 3.7.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.7.2)
-pub struct Method(Text);
+pub struct Method {
+    value: Text,
+    params: SharedParams,
+}
 
 /// The vendor of the implementation SHOULD assure that this is a globally
 /// unique identifier; using some technique such as an FPI value, as defined
@@ -52,7 +58,10 @@ pub struct Method(Text);
 /// > PRODID:-//ABC Corporation//NONSGML My Product//EN
 ///
 /// [Section 3.7.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.7.3)
-pub struct ProductIdentifier(Text);
+pub struct ProductIdentifier {
+    value: Text,
+    params: SharedParams,
+}
 
 /// A value of "2.0" corresponds to this memo.
 ///
@@ -61,4 +70,7 @@ pub struct ProductIdentifier(Text);
 /// > VERSION:2.0
 ///
 /// [Section 3.7.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.7.4)
-pub struct Version(Text);
+pub struct Version {
+    value: Text,
+    params: SharedParams,
+}

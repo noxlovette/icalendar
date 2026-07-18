@@ -1,7 +1,6 @@
 pub use crate::values::Recur;
 use crate::{
-    ParseError,
-    internal::strip_quoted_string,
+    ast::{ParseError, strip_quoted_string},
     values::{Boolean, CalendarUserAddress, MediaType, Text, Uri},
 };
 use chrono_tz::Tz;

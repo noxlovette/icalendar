@@ -1,4 +1,7 @@
-/// Convenience alias for the param vec
+use crate::ast::{ParseResult, split_once};
+use crate::params::*;
+
+/// Convenience alias for the parsed param vector
 pub type Params = Vec<PropertyParams>;
 
 /// Any property parameter defined in Section 3.2 of RFC 5545.
@@ -20,7 +23,7 @@ pub type Params = Vec<PropertyParams>;
 /// > DTSTART;TZID=America/New_York;VALUE=DATE-TIME:19980119T020000
 ///
 /// [Section 3.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2)
-pub enum PropertyParams {
+enum PropertyParams {
     /// Alternate text representation URI (`ALTREP`). §3.2.1
     Altrep(Altrep),
     /// Common name for a calendar user (`CN`). §3.2.2
@@ -75,7 +78,6 @@ pub enum PropertyParams {
 
 impl PropertyParams {
     fn parse(b: &[u8]) -> ParseResult<Vec<Self>> {
-        use crate::internal::split_once;
         let mut out = Vec::new();
         // need to split by SEMICOLON BUT a SEMICOLON that is NOT in DOUBLE QUOTES
         for s in b.split(|b| *b == b';') {

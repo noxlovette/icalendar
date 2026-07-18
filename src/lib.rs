@@ -6,12 +6,10 @@ pub(crate) mod ast;
 mod components;
 /// Errors of the crate
 mod error;
-mod internal;
 /// Sections 3.7 and 3.8 of the RFC
 mod properties;
 mod rrule;
 pub use components::*;
-pub use error::*;
 pub use properties::*;
 pub use rrule::*;
 
