@@ -1,5 +1,6 @@
 use crate::{
-    params::{Language, Params},
+    params::Language,
+    properties::SharedParams,
     values::{Text, Uri, UtcOffset},
 };
 
@@ -13,7 +14,7 @@ use crate::{
 /// [Section 3.8.3.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.3.1)
 pub struct TimeZoneIdentifier {
     value: Text,
-    params: Params,
+    params: SharedParams,
 }
 
 /// This property specifies the customary designation for a time zone
@@ -26,7 +27,12 @@ pub struct TimeZoneIdentifier {
 /// [Section 3.8.3.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.3.2)
 pub struct TimeZoneName {
     value: Text,
-    params: Params,
+    params: TZNameParams,
+}
+
+struct TZNameParams {
+    shared: SharedParams,
+    language: Language,
 }
 
 /// This property specifies the offset that is in use prior to this time zone
@@ -39,7 +45,7 @@ pub struct TimeZoneName {
 /// [Section 3.8.3.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.3.3)
 pub struct TimeZoneOffsetFrom {
     value: UtcOffset,
-    params: Params,
+    params: SharedParams,
 }
 
 /// This property specifies the UTC offset that is in use in this time zone
@@ -52,7 +58,7 @@ pub struct TimeZoneOffsetFrom {
 /// [Section 3.8.3.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.3.4)
 pub struct TimeZoneOffsetTo {
     value: UtcOffset,
-    params: Params,
+    params: SharedParams,
 }
 
 /// This property provides a means for a VTIMEZONE component to point to a
@@ -66,5 +72,5 @@ pub struct TimeZoneOffsetTo {
 /// [Section 3.8.3.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.3.5)
 pub struct TimeZoneUrl {
     value: Uri,
-    params: Params,
+    params: SharedParams,
 }

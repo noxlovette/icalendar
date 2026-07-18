@@ -1,5 +1,6 @@
+use crate::params::{TimeZoneIdentifier, ValueDataType};
+use crate::properties::SharedParams;
 use crate::values::{DateOrDatetime, DateTimePeriod, Recur};
-use params::*;
 
 /// This property defines the list of DATE-TIME exceptions for recurring events,
 /// to-dos, journal entries, or time zone definitions.
@@ -11,7 +12,7 @@ use params::*;
 /// [Section 3.8.5.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.5.1)
 pub struct ExceptionDateTimes {
     value: Vec<DateOrDatetime>,
-    params: Params,
+    params: ExDateParams,
 }
 
 /// This property defines the list of DATE-TIME values for recurring events,
@@ -24,7 +25,7 @@ pub struct ExceptionDateTimes {
 /// [Section 3.8.5.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.5.2)
 pub struct RecurrenceDateTimes {
     value: Vec<DateTimePeriod>,
-    params: Params,
+    params: RDateParams,
 }
 
 /// This property defines a rule or repeating pattern for recurring events,
@@ -37,23 +38,21 @@ pub struct RecurrenceDateTimes {
 /// [Section 3.8.5.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.5.3)
 pub struct RRule {
     value: Recur,
-    params: Params,
+    params: SharedParams,
 }
 
-mod params {
-    use crate::params::{TimeZoneIdentifier, ValueDataType};
+/// Parameter bundle for [`ExceptionDateTimes`].
+#[derive(Default)]
+pub struct ExDateParams {
+    shared: SharedParams,
+    data_type: Option<ValueDataType>,
+    tzid: Option<TimeZoneIdentifier>,
+}
 
-    /// Parameter bundle for [`ExceptionDateTimes`].
-    #[derive(Default)]
-    pub struct ExDateParams {
-        data_type: Option<ValueDataType>,
-        tzid: Option<TimeZoneIdentifier>,
-    }
-
-    /// Parameter bundle for [`RecurrenceDateTimes`].
-    #[derive(Default)]
-    pub struct RDateParams {
-        data_type: Option<ValueDataType>,
-        tzid: Option<TimeZoneIdentifier>,
-    }
+/// Parameter bundle for [`RecurrenceDateTimes`].
+#[derive(Default)]
+pub struct RDateParams {
+    shared: SharedParams,
+    data_type: Option<ValueDataType>,
+    tzid: Option<TimeZoneIdentifier>,
 }

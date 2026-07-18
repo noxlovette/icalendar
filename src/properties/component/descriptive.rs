@@ -1,7 +1,7 @@
 use crate::{
     Pair,
-    params::{Altrep, Encoding, Fmttype, Language, ValueDataType},
-    properties::SharedParams,
+    params::{Encoding, Fmttype, Language, ValueDataType},
+    properties::{AltrepLanguageParams, SharedParams},
     values::{Float, Integer, Text},
 };
 
@@ -106,15 +106,6 @@ enum ClassificationEnum {
 pub struct Comment {
     value: Text,
     params: AltrepLanguageParams,
-}
-
-/// These params are shared by multiple properties:
-///
-/// Summary, Resources, Description, Location
-struct AltrepLanguageParams {
-    shared: SharedParams,
-    altrep: Option<Altrep>,
-    language: Option<Language>,
 }
 
 /// This property is used in the "VEVENT" and "VTODO" to capture lengthy

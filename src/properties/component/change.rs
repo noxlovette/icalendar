@@ -1,5 +1,5 @@
 use crate::{
-    Params,
+    properties::SharedParams,
     values::{DateTime, Integer},
 };
 
@@ -13,7 +13,7 @@ use crate::{
 /// [Section 3.8.7.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.1)
 pub struct DateTimeCreated {
     value: DateTime,
-    params: Params,
+    params: SharedParams,
 }
 
 /// This property specifies the date and time that the instance of the iCalendar
@@ -28,7 +28,7 @@ pub struct DateTimeCreated {
 /// [Section 3.8.7.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.2)
 pub struct DateTimeStamp {
     value: DateTime,
-    params: Params,
+    params: SharedParams,
 }
 
 /// This property specifies the date and time that the information associated
@@ -41,7 +41,7 @@ pub struct DateTimeStamp {
 /// [Section 3.8.7.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.3)
 pub struct LastModified {
     value: DateTime,
-    params: Params,
+    params: SharedParams,
 }
 
 /// This property defines the revision sequence number of the calendar component
@@ -54,5 +54,5 @@ pub struct LastModified {
 /// [Section 3.8.7.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.4)
 pub struct Sequence {
     value: Integer,
-    params: Params,
+    params: SharedParams,
 }

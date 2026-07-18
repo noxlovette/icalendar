@@ -1,8 +1,14 @@
 use crate::{
-    params::{CommonName, DirectoryEntryReference, Language, Params, SentBy},
+    params::{
+        CalendarUserType, CommonName, Delegatees, Delegators,
+        DirectoryEntryReference, Language, Member, ParticipationStatus,
+        RecurrenceIdentifierRange, RelationshipType, Rsvp, SentBy,
+        ValueDataType,
+    },
+    properties::{AltrepLanguageParams, SharedParams},
+    timezone::TimeZoneIdentifier,
     values::{CalendarUserAddress, DateOrDatetime, Text, Uri},
 };
-use params::*;
 
 /// This property defines an "Attendee" within a calendar component.
 ///
@@ -14,7 +20,23 @@ use params::*;
 /// [Section 3.8.4.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.1)
 pub struct Attendee {
     value: CalendarUserAddress,
-    params: Params,
+    params: AttendeeParams,
+}
+
+/// Parameter bundle for [`Attendee`].
+#[derive(Default)]
+struct AttendeeParams {
+    shared: SharedParams,
+    language: Option<Language>,
+    calendar_user_type: Option<CalendarUserType>,
+    member: Option<Member>,
+    status: Option<ParticipationStatus>,
+    rsvp: Option<Rsvp>,
+    deletegatee: Option<Delegatees>,
+    delegator: Option<Delegators>,
+    sent_by: Option<SentBy>,
+    common_name: Option<CommonName>,
+    directory: Option<DirectoryEntryReference>,
 }
 
 /// This property is used to represent contact information or alternately a
@@ -27,7 +49,7 @@ pub struct Attendee {
 /// [Section 3.8.4.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.2)
 pub struct Contact {
     value: Text,
-    params: Params,
+    params: AltrepLanguageParams,
 }
 
 /// This property defines the organizer for a calendar component.
@@ -39,12 +61,13 @@ pub struct Contact {
 /// [Section 3.8.4.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.3)
 pub struct Organizer {
     value: CalendarUserAddress,
-    params: Params,
+    params: OrgParams,
 }
 
 /// Parameter bundle for [`Organizer`].
 #[derive(Default)]
 pub struct OrgParams {
+    shared: SharedParams,
     language: Option<Language>,
     common_name: Option<CommonName>,
     directory: Option<DirectoryEntryReference>,
@@ -62,7 +85,16 @@ pub struct OrgParams {
 /// [Section 3.8.4.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.4)
 pub struct RecurrenceId {
     value: DateOrDatetime,
-    params: Params,
+    params: RecurrenceParams,
+}
+
+/// Parameter bundle for [`RecurrenceId`].
+#[derive(Default)]
+struct RecurrenceParams {
+    shared: SharedParams,
+    data_type: Option<ValueDataType>,
+    tzid: Option<TimeZoneIdentifier>,
+    recurrence: Option<RecurrenceIdentifierRange>,
 }
 
 /// This property is used to represent a relationship or reference between
@@ -76,7 +108,14 @@ pub struct RecurrenceId {
 /// [Section 3.8.4.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.5)
 pub struct RelatedTo {
     value: Uid,
-    params: Params,
+    params: RelatedToParams,
+}
+
+/// Parameter bundle for [`RelatedTo`].
+#[derive(Default)]
+struct RelatedToParams {
+    shared: SharedParams,
+    rt: Option<RelationshipType>,
 }
 
 /// This property defines a Uniform Resource Locator (URL) associated with
@@ -89,7 +128,7 @@ pub struct RelatedTo {
 /// [Section 3.8.4.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.6)
 pub struct UniformResourceLocator {
     value: Uri,
-    params: Params,
+    params: SharedParams,
 }
 
 /// This property defines the persistent, globally unique identifier for the
@@ -107,46 +146,5 @@ pub struct UniformResourceLocator {
 /// [Section 3.8.4.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.7)
 pub struct Uid {
     value: Text,
-    params: Params,
-}
-
-mod params {
-    use crate::{
-        params::{
-            CalendarUserType, CommonName, Delegatees, Delegators,
-            DirectoryEntryReference, Language, Member, ParticipationStatus,
-            RecurrenceIdentifierRange, RelationshipType, Rsvp, SentBy,
-            ValueDataType,
-        },
-        timezone::TimeZoneIdentifier,
-    };
-
-    /// Parameter bundle for [`RelatedTo`].
-    #[derive(Default)]
-    pub struct RtParams {
-        rt: Option<RelationshipType>,
-    }
-
-    /// Parameter bundle for [`RecurrenceId`].
-    #[derive(Default)]
-    pub struct RecurrenceParams {
-        data_type: Option<ValueDataType>,
-        tzid: Option<TimeZoneIdentifier>,
-        recurrence: Option<RecurrenceIdentifierRange>,
-    }
-
-    /// Parameter bundle for [`Attendee`].
-    #[derive(Default)]
-    pub struct AttendeeParams {
-        language: Option<Language>,
-        calendar_user_type: Option<CalendarUserType>,
-        member: Option<Member>,
-        status: Option<ParticipationStatus>,
-        rsvp: Option<Rsvp>,
-        deletegatee: Option<Delegatees>,
-        delegator: Option<Delegators>,
-        sent_by: Option<SentBy>,
-        common_name: Option<CommonName>,
-        directory: Option<DirectoryEntryReference>,
-    }
+    params: SharedParams,
 }

@@ -8,7 +8,10 @@ pub use component::*;
 
 use std::fmt::Debug;
 
-use crate::values::Text;
+use crate::{
+    params::{Altrep, Language},
+    values::Text,
+};
 
 /// This trait ensures that all parameters as used in properties have iana and x-name params 100% of the time
 pub trait Params: Default + Debug {
@@ -32,4 +35,15 @@ impl Params for SharedParams {
     fn get_xname(&self) -> &[Text] {
         &self.xname
     }
+}
+
+/// Shared + Altrep + Language
+///
+/// These params are shared by multiple properties:
+///
+/// Summary, Resources, Description, Location, Contact, etc.
+struct AltrepLanguageParams {
+    shared: SharedParams,
+    altrep: Option<Altrep>,
+    language: Option<Language>,
 }
