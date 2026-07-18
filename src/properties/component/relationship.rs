@@ -113,9 +113,10 @@ pub struct Uid {
 mod params {
     use crate::{
         params::{
-            CalendarUserType, CommonName, DataTypes, Delegatees, Delegators,
+            CalendarUserType, CommonName, Delegatees, Delegators,
             DirectoryEntryReference, Language, Member, ParticipationStatus,
             RecurrenceIdentifierRange, RelationshipType, Rsvp, SentBy,
+            ValueDataType,
         },
         timezone::TimeZoneIdentifier,
     };
@@ -129,7 +130,7 @@ mod params {
     /// Parameter bundle for [`RecurrenceId`].
     #[derive(Default)]
     pub struct RecurrenceParams {
-        data_type: Option<DataTypes>,
+        data_type: Option<ValueDataType>,
         tzid: Option<TimeZoneIdentifier>,
         recurrence: Option<RecurrenceIdentifierRange>,
     }

@@ -1,10 +1,6 @@
 use std::ops::Deref;
 
-use crate::{
-    ParseError,
-    internal::split_once,
-    params::TimeZoneIdentifier,
-};
+use crate::{ParseError, internal::split_once, params::TimeZoneIdentifier};
 use base64::alphabet::Alphabet;
 use chrono::{
     DateTime as ChronoDateTime, Duration as ChronoDuration, FixedOffset,
@@ -416,7 +412,7 @@ pub struct Boolean(bool);
 /// > Project XYZ Final Review\nConference Room - 3B\nCome Prepared.
 ///
 /// [Section 3.3.11](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.11)
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Text(String);
 
 /// This value type might be used to reference binary
@@ -704,6 +700,7 @@ mod recurrence {
 ///
 /// As used in this crate, we only validate that there is a type and subtype,
 /// separated by a slash
+#[derive(Default, Debug)]
 pub struct MediaType {
     media_type: Text,
     subtype: Text,
@@ -792,4 +789,3 @@ impl TryFrom<&[u8]> for Boolean {
         Ok(r)
     }
 }
-

@@ -44,19 +44,19 @@ pub struct RRule {
 }
 
 mod params {
-    use crate::params::{DataTypes, TimeZoneIdentifier};
+    use crate::params::{TimeZoneIdentifier, ValueDataType};
 
     /// Parameter bundle for [`ExceptionDateTimes`].
     #[derive(Default)]
     pub struct ExDateParams {
-        data_type: Option<DataTypes>,
+        data_type: Option<ValueDataType>,
         tzid: Option<TimeZoneIdentifier>,
     }
 
     /// Parameter bundle for [`RecurrenceDateTimes`].
     #[derive(Default)]
     pub struct RDateParams {
-        data_type: Option<DataTypes>,
+        data_type: Option<ValueDataType>,
         tzid: Option<TimeZoneIdentifier>,
     }
 }

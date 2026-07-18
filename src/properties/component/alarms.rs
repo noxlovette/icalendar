@@ -1,7 +1,4 @@
-use crate::{
-    params::Params,
-    values::{DateTimeDuration, Integer, Text},
-};
+use crate::values::{DateTimeDuration, Integer, Text};
 
 /// This property defines the action to be invoked when an alarm is triggered.
 ///

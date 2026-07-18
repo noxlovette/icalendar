@@ -1,7 +1,9 @@
 use crate::{
     Pair,
-    params::{DataTypes, Encoding, Fmttype, Language, Params},
-    values::{Binary, Float, Integer, Text, Uri},
+    params::{
+        Altrep, Encoding, Fmttype, Language, SharedParams, ValueDataType,
+    },
+    values::{Float, Integer, Text},
 };
 
 /// This property is used in "VEVENT", "VTODO", and "VJOURNAL" calendar
@@ -19,29 +21,22 @@ use crate::{
 /// "application/octet-stream".
 ///
 /// [Section 3.8.1.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.1)
-pub enum Attachment {
-    /// Attachment referenced by a URI.
-    Uri {
-        /// The URI pointing to the resource.
-        value: Uri,
-        /// Optional format-type and encoding parameters.
-        params: Params,
-    },
-    /// Attachment with inline BASE64-encoded binary content.
-    Binary {
-        /// The inline binary data.
-        value: Binary,
-        /// Encoding and format-type parameters; `ENCODING=BASE64` is required.
-        params: Params,
-    },
+pub struct Attachment {
+    value: AttachmentValue,
+    params: AttachmentParams,
 }
 
-/// Parameter bundle for [`Attachment`].
-#[derive(Default)]
-pub struct AttachmentParams {
-    fmttype: Option<Fmttype>,
+enum AttachmentValue {
+    Uri,
+    Binary,
+}
+
+#[derive(Default, Debug)]
+struct AttachmentParams {
+    shared: SharedParams,
     encoding: Option<Encoding>,
-    value: Option<DataTypes>,
+    value_data_type: Option<ValueDataType>,
+    fmttype: Option<Fmttype>,
 }
 
 /// This property is used to specify categories or subtypes of the calendar
@@ -57,7 +52,12 @@ pub struct AttachmentParams {
 /// [Section 3.8.1.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.2)
 pub struct Categories {
     value: Vec<Text>,
-    params: Params,
+    params: CategoriesParams,
+}
+
+struct CategoriesParams {
+    shared: SharedParams,
+    language: Option<Language>,
 }
 
 /// An access classification is only one component of the general security
@@ -86,7 +86,7 @@ pub struct Categories {
 /// [Section 3.8.1.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.3)
 pub struct Classification {
     value: ClassificationEnum,
-    params: Params,
+    params: SharedParams,
 }
 
 enum ClassificationEnum {
@@ -106,7 +106,16 @@ enum ClassificationEnum {
 /// [Section 3.8.1.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.4)
 pub struct Comment {
     value: Text,
-    params: Params,
+    params: AltrepLanguageParams,
+}
+
+/// These params are shared by multiple properties:
+///
+/// Summary, Resources, Description, Location
+struct AltrepLanguageParams {
+    shared: SharedParams,
+    altrep: Option<Altrep>,
+    language: Option<Language>,
 }
 
 /// This property is used in the "VEVENT" and "VTODO" to capture lengthy
@@ -122,7 +131,7 @@ pub struct Comment {
 /// [Section 3.8.1.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.5)
 pub struct Description {
     value: Text,
-    params: Params,
+    params: AltrepLanguageParams,
 }
 
 /// This property value specifies latitude and longitude, in that order
@@ -144,7 +153,7 @@ pub struct Description {
 /// [Section 3.8.1.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.6)
 pub struct Geo {
     value: Pair<Float>,
-    params: Params,
+    params: SharedParams,
 }
 
 /// Specific venues such as conference or meeting rooms may be explicitly
@@ -162,7 +171,7 @@ pub struct Geo {
 /// [Section 3.8.1.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.7)
 pub struct Location {
     value: Text,
-    params: Params,
+    params: AltrepLanguageParams,
 }
 
 /// The property value is a positive integer between 0 and 100.  A value of
@@ -181,7 +190,7 @@ pub struct Location {
 /// [Section 3.8.1.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.8)
 pub struct PercentComplete {
     value: Integer,
-    params: Params,
+    params: SharedParams,
 }
 
 /// This priority is specified as an integer in the range 0 to 9.  A value
@@ -206,7 +215,7 @@ pub struct PercentComplete {
 /// [Section 3.8.1.9](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.9)
 pub struct Priority {
     value: Integer,
-    params: Params,
+    params: SharedParams,
 }
 
 /// The property value is an arbitrary text.  More than one resource can be
@@ -219,7 +228,7 @@ pub struct Priority {
 /// [Section 3.8.1.10](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.10)
 pub struct Resources {
     value: Text,
-    params: Params,
+    params: AltrepLanguageParams,
 }
 
 /// In a group-scheduled calendar component, the property is used by the
@@ -237,28 +246,15 @@ pub struct Resources {
 /// > STATUS:TENTATIVE
 ///
 /// [Section 3.8.1.11](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.11)
-pub enum Status {
-    /// Status of a `VEVENT` component.
-    Event {
-        /// The event status value.
-        value: EventStatus,
-        /// Property parameters.
-        params: Params,
-    },
-    /// Status of a `VTODO` component.
-    Todo {
-        /// The to-do status value.
-        value: TodoStatus,
-        /// Property parameters.
-        params: Params,
-    },
-    /// Status of a `VJOURNAL` component.
-    Journal {
-        /// The journal status value.
-        value: JourStatus,
-        /// Property parameters.
-        params: Params,
-    },
+pub struct Status {
+    value: StatusValue,
+    params: SharedParams,
+}
+
+enum StatusValue {
+    Event(EventStatus),
+    Todo(TodoStatus),
+    Journal(JourStatus),
 }
 
 /// Status values for a `VEVENT` component.
@@ -307,5 +303,5 @@ pub enum JourStatus {
 /// [Section 3.8.1.12](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.12)
 pub struct Summary {
     value: Text,
-    params: Params,
+    params: AltrepLanguageParams,
 }

@@ -1,6 +1,7 @@
 //! RFC 5545 in Rust
 #![warn(missing_docs)]
 
+pub(crate) mod ast;
 /// As specified [in the RFC Section 3.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6)
 mod components;
 /// Errors of the crate
