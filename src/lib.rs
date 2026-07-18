@@ -7,10 +7,8 @@ mod components;
 /// Errors of the crate
 mod error;
 /// Sections 3.7 and 3.8 of the RFC
-mod properties;
+pub mod properties;
 mod rrule;
-pub use components::*;
-pub use properties::*;
 pub use rrule::*;
 
 /// Alias for emails. TODO: enforce email safety
@@ -96,7 +94,6 @@ pub struct ICalendar {
     version: String,
     calscale: Option<String>,
     method: Option<String>,
-    component: Component,
 }
 
 impl Uid {

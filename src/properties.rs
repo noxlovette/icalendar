@@ -8,6 +8,8 @@ pub use component::*;
 
 use std::fmt::Debug;
 
+pub struct Xprop;
+pub struct Iana;
 use crate::{
     params::{Altrep, Language},
     values::Text,

@@ -6,6 +6,12 @@ A Rust iCalendar (RFC 5545) library.
 
 If you see a tuple struct like the Uid, NEVER EVER allow it to have its inner type to be PUBLIC
 
+## Rule enforcement
+
+Components MUST NOT USE ANYTHING OTHER THAN PROPERTIES
+
+Properties MUST have a value and a params struct fields. The value field MUST contain only values from value.rs. Params must only contain values from params.rs, no exceptions
+
 ## Documentation conventions
 
 Every public type and property struct/enum must have a doc comment that:

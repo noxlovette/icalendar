@@ -3,10 +3,9 @@ use crate::{
         CalendarUserType, CommonName, Delegatees, Delegators,
         DirectoryEntryReference, Language, Member, ParticipationStatus,
         RecurrenceIdentifierRange, RelationshipType, Rsvp, SentBy,
-        ValueDataType,
+        TimeZoneIdentifier, ValueDataType,
     },
     properties::{AltrepLanguageParams, SharedParams},
-    timezone::TimeZoneIdentifier,
     values::{CalendarUserAddress, DateOrDatetime, Text, Uri},
 };
 

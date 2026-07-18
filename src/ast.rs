@@ -1,6 +1,6 @@
 use std::str::Utf8Error;
 use thiserror::Error;
-
+pub mod component;
 pub mod params;
 /// Splits a Bytes vector by given pattern
 pub(crate) fn split_once(b: &[u8], needle: u8) -> ParseResult<(&[u8], &[u8])> {

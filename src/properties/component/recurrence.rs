@@ -43,7 +43,7 @@ pub struct RRule {
 
 /// Parameter bundle for [`ExceptionDateTimes`].
 #[derive(Default)]
-pub struct ExDateParams {
+struct ExDateParams {
     shared: SharedParams,
     data_type: Option<ValueDataType>,
     tzid: Option<TimeZoneIdentifier>,
@@ -51,7 +51,7 @@ pub struct ExDateParams {
 
 /// Parameter bundle for [`RecurrenceDateTimes`].
 #[derive(Default)]
-pub struct RDateParams {
+struct RDateParams {
     shared: SharedParams,
     data_type: Option<ValueDataType>,
     tzid: Option<TimeZoneIdentifier>,
