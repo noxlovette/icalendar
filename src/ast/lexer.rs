@@ -222,3 +222,6 @@ static KEYWORDS: LazyLock<HashMap<&'static [u8], TokenType>> =
             (b"SENT-BY".as_slice(), SentBy),
         ])
     });
+
+#[cfg(test)]
+mod tests;

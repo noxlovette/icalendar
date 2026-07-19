@@ -12,6 +12,10 @@ Components MUST NOT USE ANYTHING OTHER THAN PROPERTIES
 
 Properties MUST have a value and a params struct fields. The value field MUST contain only values from value.rs. Params must only contain values from params.rs, no exceptions
 
+## Testing philosophy
+
+Tests are written test-driven: they assert what the code's behavior MUST be per RFC 5545 (or the type's documented contract), not what the current implementation happens to do. Never write a test by running the code and copying its output into the assertion — that encodes bugs as spec. If a test fails against current code, the test is correct and the code is wrong; fix the code, don't loosen the test.
+
 ## Documentation conventions
 
 Every public type and property struct/enum must have a doc comment that:
