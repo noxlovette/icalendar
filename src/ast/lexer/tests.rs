@@ -26,8 +26,8 @@ fn scans_a_single_property_contentline() {
 }
 
 #[test]
-fn recognizes_rfc5545_keywords_case_sensitively() {
-    let tokens = Lexer::new(b"RRULE:FREQ=DAILY\r\n").scan().unwrap();
+fn recognizes_rfc5545_keywords_case_insensitively() {
+    let tokens = Lexer::new(b"RrUlE:FREQ=DAILY\r\n").scan().unwrap();
     assert_tokens(
         tokens,
         vec![
@@ -68,9 +68,15 @@ fn semicolon_param_with_equals_tokenizes_name_and_value() {
             Token::new(TokenType::Semicolon, b";", None, 0),
             Token::new(TokenType::Range, b"RANGE", None, 0),
             Token::new(TokenType::Equals, b"=", None, 0),
-            // "THISANDFUTURE" is not a registered keyword, so it falls
-            // back to Identifier even though it's a legal RANGE value.
-            Token::new(TokenType::Identifier, b"THISANDFUTURE", None, 0),
+            // Everything after `=` is param-value position, not name
+            // position, so this is a ParamValue token even though
+            // "THISANDFUTURE" also happens to not be a registered keyword.
+            Token::new(
+                TokenType::ParamValue,
+                b"THISANDFUTURE",
+                Some(b"THISANDFUTURE"),
+                0,
+            ),
             Token::new(TokenType::Colon, b":", None, 0),
             Token::new(
                 TokenType::Value,
@@ -151,12 +157,89 @@ fn slash_in_unquoted_param_value_is_a_safe_char_not_an_error() {
             Token::new(TokenType::Semicolon, b";", None, 0),
             Token::new(TokenType::TzId, b"TZID", None, 0),
             Token::new(TokenType::Equals, b"=", None, 0),
-            Token::new(TokenType::Identifier, b"America/New_York", None, 0),
+            Token::new(
+                TokenType::ParamValue,
+                b"America/New_York",
+                Some(b"America/New_York"),
+                0,
+            ),
             Token::new(TokenType::Colon, b":", None, 0),
             Token::new(
                 TokenType::Value,
                 b"20240104T100000",
                 Some(b"20240104T100000"),
+                0,
+            ),
+            Token::new(TokenType::Crlf, b"\r\n", None, 0),
+            Token::new(TokenType::Eof, b"", None, 1),
+        ],
+    );
+}
+
+#[test]
+fn comma_separated_param_values_all_tokenize_as_param_value() {
+    // §3.2: param = param-name "=" param-value *("," param-value) — a
+    // single param can carry a list of values. Every value in the list,
+    // not just the first, is param-value position, so each one must come
+    // out as ParamValue (never Identifier), and the `,` between them must
+    // not reset param-value state the way `;` does.
+    let tokens =
+        Lexer::new(b"ATTENDEE;DELEGATED-FROM=A,B:mailto:foo@example.com\r\n")
+            .scan()
+            .unwrap();
+    assert_tokens(
+        tokens,
+        vec![
+            Token::new(TokenType::Attendee, b"ATTENDEE", None, 0),
+            Token::new(TokenType::Semicolon, b";", None, 0),
+            Token::new(TokenType::DelegatedFrom, b"DELEGATED-FROM", None, 0),
+            Token::new(TokenType::Equals, b"=", None, 0),
+            Token::new(TokenType::ParamValue, b"A", Some(b"A"), 0),
+            Token::new(TokenType::Comma, b",", None, 0),
+            Token::new(TokenType::ParamValue, b"B", Some(b"B"), 0),
+            Token::new(TokenType::Colon, b":", None, 0),
+            Token::new(
+                TokenType::Value,
+                b"mailto:foo@example.com",
+                Some(b"mailto:foo@example.com"),
+                0,
+            ),
+            Token::new(TokenType::Crlf, b"\r\n", None, 0),
+            Token::new(TokenType::Eof, b"", None, 1),
+        ],
+    );
+}
+
+#[test]
+fn quoted_string_param_value_is_supported() {
+    // §3.2: param-value can be a quoted-string: DQUOTE *QSAFE-CHAR DQUOTE.
+    // QSAFE-CHAR permits any character except CTL and DQUOTE, so a quoted
+    // param-value may legally contain bytes (like the space here) that
+    // would be illegal in unquoted paramtext. The resulting token's
+    // lexeme/literal must hold the unquoted content, not the surrounding
+    // DQUOTEs.
+    let tokens =
+        Lexer::new(b"ORGANIZER;CN=\"John Doe\":mailto:jdoe@example.com\r\n")
+            .scan()
+            .unwrap();
+    assert_tokens(
+        tokens,
+        vec![
+            Token::new(TokenType::Organizer, b"ORGANIZER", None, 0),
+            Token::new(TokenType::Semicolon, b";", None, 0),
+            Token::new(TokenType::Cn, b"CN", None, 0),
+            Token::new(TokenType::Equals, b"=", None, 0),
+            Token::new(
+                TokenType::ParamValue,
+                b"John Doe",
+                Some(b"John Doe"),
+                0,
+            ),
+            Token::new(TokenType::Colon, b":", None, 0),
+            Token::new(
+                TokenType::Value,
+                b"mailto:jdoe@example.com",
+                Some(b"mailto:jdoe@example.com"),
                 0,
             ),
             Token::new(TokenType::Crlf, b"\r\n", None, 0),

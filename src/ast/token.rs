@@ -25,9 +25,11 @@ pub enum TokenType {
     /// A non-standard (`X-`) or IANA-registered name in property/param
     /// position. §3.8.8.1 / §3.8.8.2 / §3.2 (x-param/iana-param).
     Identifier,
-    /// The raw value text following `:` (a property value) or `=`
-    /// (a parameter value).
+    /// The raw value text following `:` (a property value).
     Value,
+    /// The raw value text following `=` or `,` in parameter position
+    /// (a parameter value). §3.2.
+    ParamValue,
 
     // --- component names, §3.6 ---
     /// BEGIN. §3.6
@@ -210,11 +212,16 @@ pub enum TokenType {
 #[derive(Debug)]
 pub struct Token<'a> {
     token_type: TokenType,
-    /// Raw bytes exactly as scanned (e.g. `b"DTSTART"`, `b"America/New_York"`).
-    lexeme: &'a [u8],
-    /// Decoded value payload — `Some` only for `Value`/`Identifier` tokens
-    /// carrying a property or parameter value; `None` for keyword and
-    /// structural tokens.
+    /// Bytes as scanned, normalized per [Section 2](https://datatracker.ietf.org/doc/html/rfc5545#section-2):
+    /// names of properties, property parameters, and enumerated property
+    /// parameter values are case-insensitive, so keyword/identifier lexemes
+    /// are upper-cased here rather than kept as a borrowed source subslice.
+    /// Owned so a lowercase-in-the-wild lexeme (e.g. `b"dtstart"`) can be
+    /// normalized to `b"DTSTART"` without aliasing the original source.
+    lexeme: Vec<u8>,
+    /// Decoded value payload — `Some` only for `Value`/`ParamValue` tokens
+    /// carrying a property or parameter value; `None` for keyword,
+    /// `Identifier`, and structural tokens.
     literal: Option<&'a [u8]>,
     line: usize,
 }
@@ -222,13 +229,13 @@ pub struct Token<'a> {
 impl<'a> Token<'a> {
     pub fn new(
         t: TokenType,
-        lex: &'a [u8],
+        lex: &[u8],
         lit: Option<&'a [u8]>,
         line: usize,
     ) -> Self {
         Self {
             token_type: t,
-            lexeme: lex,
+            lexeme: lex.to_vec(),
             literal: lit,
             line,
         }

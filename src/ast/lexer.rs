@@ -1,14 +1,16 @@
 use super::token::{Token, TokenType};
-use crate::ast::token::TokenType::{Identifier, Value};
+use crate::ast::token::TokenType::{Identifier, ParamValue, Value};
 use std::{collections::HashMap, sync::LazyLock};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum LexerError {
     #[error("Unknown lexeme at line {line}, got {got}")]
-    UnknownLexeme { line: usize, got: String },
+    UnknownLexeme { line: usize, got: u8 },
     #[error("Broken CRLF at line {line}")]
     Crlf { line: usize },
+    #[error("Unterminated quoted-string param value starting at line {line}")]
+    UnterminatedQuotedString { line: usize },
 }
 
 #[derive(Debug, Default)]
@@ -18,6 +20,11 @@ pub struct Lexer<'a> {
     start: usize,
     current: usize,
     line: usize,
+    /// Set on `=`, cleared on `;`/`:`. `,` leaves it untouched, since
+    /// `param-value *("," param-value)` keeps scanning more values for
+    /// the same param. While set, `textual()` produces `ParamValue`
+    /// tokens instead of doing a keyword lookup.
+    in_param_value: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -38,14 +45,26 @@ impl<'a> Lexer<'a> {
             match c {
                 b':' => {
                     self.add_token(Colon, None);
+                    self.in_param_value = false;
+                    self.start += 1;
                     self.value();
                 }
-                b';' => self.add_token(Semicolon, None),
+                b';' => {
+                    self.add_token(Semicolon, None);
+                    self.in_param_value = false;
+                }
                 b',' => self.add_token(Comma, None),
-                b'=' => self.add_token(Equals, None),
+                b'=' => {
+                    self.add_token(Equals, None);
+                    self.in_param_value = true;
+                }
+                b'"' => {
+                    self.param_value()?;
+                }
                 b'\r' => {
-                    if self.peek() == b'\n' {
+                    if self.match_next(b'\n') {
                         self.add_token(Crlf, None);
+                        self.line += 1;
                     } else {
                         return Err(LexerError::Crlf { line: self.line });
                     }
@@ -57,7 +76,7 @@ impl<'a> Lexer<'a> {
                 _ => {
                     return Err(LexerError::UnknownLexeme {
                         line: self.line,
-                        got: "bullshit".into(),
+                        got: c,
                     });
                 }
             }
@@ -70,7 +89,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn value(&mut self) {
-        while !(self.peek() == b'\r' && self.peek_next() == b'\n') {
+        while !self.is_at_end() && self.peek() != b'\r' {
             self.next();
         }
 
@@ -80,18 +99,53 @@ impl<'a> Lexer<'a> {
     }
 
     fn textual(&mut self) {
-        while self.peek().is_ascii_alphanumeric() || self.peek() == b'-' {
+        while self.peek().is_ascii_alphanumeric()
+            || matches!(self.peek(), b'-' | b'/' | b'_')
+        {
             self.next();
         }
 
         let text = &self.source[self.start..self.current];
 
-        let tt = match KEYWORDS.get(text) {
-            None => Identifier,
-            Some(&k) => k,
-        };
+        if self.in_param_value {
+            self.tokens.push(Token::new(
+                ParamValue,
+                text,
+                Some(text),
+                self.line,
+            ));
+            return;
+        }
 
-        self.add_token(tt, None);
+        let upper = text.to_ascii_uppercase();
+        match KEYWORDS.get(upper.as_slice()) {
+            None => self
+                .tokens
+                .push(Token::new(Identifier, text, None, self.line)),
+            Some(&tt) => {
+                self.tokens.push(Token::new(tt, &upper, None, self.line))
+            }
+        }
+    }
+
+    fn param_value(&mut self) -> Result<(), LexerError> {
+        // Skip the opening DQUOTE — it's not part of the value.
+        self.start = self.current;
+
+        while !self.is_at_end() && self.peek() != b'"' {
+            self.next();
+        }
+
+        if self.is_at_end() {
+            return Err(LexerError::UnterminatedQuotedString { line: self.line });
+        }
+
+        let text = &self.source[self.start..self.current];
+        self.next(); // consume the closing DQUOTE
+
+        self.tokens
+            .push(Token::new(ParamValue, text, Some(text), self.line));
+        Ok(())
     }
 
     /// adds a new token to self
@@ -116,11 +170,14 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn peek_next(&self) -> u8 {
-        if self.current >= self.source.len() {
-            b'\0'
+    fn match_next(&mut self, expected: u8) -> bool {
+        if self.is_at_end() {
+            false
+        } else if self.source[self.current] == expected {
+            self.current += 1;
+            true
         } else {
-            self.source[self.current + 1]
+            false
         }
     }
 
