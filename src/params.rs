@@ -429,9 +429,10 @@ pub enum ParticipationStatus {
 impl TryFrom<&[u8]> for ParticipationStatus {
     type Error = ParseError;
 
-    // COMPLETED and IN-PROCESS are VTODO-only; everything else is routed through
-    // PartStatEvent, which covers the common superset (NEEDS-ACTION, ACCEPTED,
-    // DECLINED, TENTATIVE, DELEGATED) shared across VEVENT and VJOURNAL.
+    // COMPLETED and IN-PROCESS are VTODO-only; everything else is routed
+    // through PartStatEvent, which covers the common superset
+    // (NEEDS-ACTION, ACCEPTED, DECLINED, TENTATIVE, DELEGATED) shared
+    // across VEVENT and VJOURNAL.
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         match b {
             b"COMPLETED" => Ok(Self::Todo(PartStatTodo::Completed)),

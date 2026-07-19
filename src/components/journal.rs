@@ -42,14 +42,14 @@ use crate::properties::{
 /// > SUMMARY:Staff meeting minutes
 /// >
 /// > DESCRIPTION:1. Staff meeting: Participants include Joe\,
-/// >  Lisa\, and Bob. Aurora project plans were reviewed.
-/// >  There is currently no budget reserves for this project.
-/// >  Lisa will escalate to management. Next meeting on Tuesday.\n
+/// > Lisa\, and Bob. Aurora project plans were reviewed.
+/// > There is currently no budget reserves for this project.
+/// > Lisa will escalate to management. Next meeting on Tuesday.\n
 /// > 2. Telephone Conference: ABC Corp. sales representative
-/// >  called to discuss new printer. Promised to get us a demo by
-/// >  Friday.\n3. Henry Miller (Handsoff Insurance): Car was
-/// >  totaled by tree. Is looking into a loaner car. 555-2323
-/// >  (tel).
+/// > called to discuss new printer. Promised to get us a demo by
+/// > Friday.\n3. Henry Miller (Handsoff Insurance): Car was
+/// > totaled by tree. Is looking into a loaner car. 555-2323
+/// > (tel).
 /// >
 /// > END:VJOURNAL
 /// >

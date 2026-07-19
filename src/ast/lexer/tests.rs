@@ -7,9 +7,13 @@ fn assert_tokens(actual: Vec<Token>, expected: Vec<Token>) {
     assert_eq!(format!("{:?}", actual), format!("{:?}", expected));
 }
 
+fn lex(src: &[u8]) -> Result<Vec<Token>, LexerError> {
+    Lexer::new(src).scan()
+}
+
 #[test]
 fn scans_a_single_property_contentline() {
-    let tokens = Lexer::new(b"BEGIN:VCALENDAR\r\n").scan().unwrap();
+    let tokens = lex(b"BEGIN:VCALENDAR\r\n").unwrap();
 
     // The Value token must hold only the value text after the `:`,
     // not the colon itself.
@@ -27,7 +31,7 @@ fn scans_a_single_property_contentline() {
 
 #[test]
 fn recognizes_rfc5545_keywords_case_insensitively() {
-    let tokens = Lexer::new(b"RrUlE:FREQ=DAILY\r\n").scan().unwrap();
+    let tokens = lex(b"RrUlE:FREQ=DAILY\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
@@ -42,7 +46,25 @@ fn recognizes_rfc5545_keywords_case_insensitively() {
 
 #[test]
 fn unrecognized_name_becomes_identifier() {
-    let tokens = Lexer::new(b"X-CUSTOM-PROP:value\r\n").scan().unwrap();
+    let tokens = lex(b"X-CUSTOM-PROP:value\r\n").unwrap();
+    assert_tokens(
+        tokens,
+        vec![
+            Token::new(TokenType::Identifier, b"X-CUSTOM-PROP", None, 0),
+            Token::new(TokenType::Colon, b":", None, 0),
+            Token::new(TokenType::Value, b"value", Some(b"value"), 0),
+            Token::new(TokenType::Crlf, b"\r\n", None, 0),
+            Token::new(TokenType::Eof, b"", None, 1),
+        ],
+    );
+}
+
+#[test]
+fn unrecognized_lowercase_name_is_normalized_to_uppercase() {
+    // Per token.rs's documented contract: identifier lexemes are
+    // case-folded the same as keyword lexemes, since RFC 5545 §2 makes
+    // names case-insensitive regardless of whether they're recognized.
+    let tokens = lex(b"x-custom-prop:value\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
@@ -58,9 +80,7 @@ fn unrecognized_name_becomes_identifier() {
 #[test]
 fn semicolon_param_with_equals_tokenizes_name_and_value() {
     let tokens =
-        Lexer::new(b"RECURRENCE-ID;RANGE=THISANDFUTURE:20240402T100000\r\n")
-            .scan()
-            .unwrap();
+        lex(b"RECURRENCE-ID;RANGE=THISANDFUTURE:20240402T100000\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
@@ -95,9 +115,7 @@ fn line_advances_after_each_crlf() {
     // §3.1: a logical content line ends at CRLF. Every token scanned
     // after a CRLF belongs to the next (post-unfolding) line, so `line`
     // must increment once per CRLF consumed.
-    let tokens = Lexer::new(b"UID:foo\r\nDTSTAMP:20240102T090000Z\r\n")
-        .scan()
-        .unwrap();
+    let tokens = lex(b"UID:foo\r\nDTSTAMP:20240102T090000Z\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
@@ -122,7 +140,7 @@ fn line_advances_after_each_crlf() {
 #[test]
 fn slash_in_raw_value_position_is_fine() {
     // After a `:`, everything up to CRLF is the property value verbatim.
-    let tokens = Lexer::new(b"TZID:America/New_York\r\n").scan().unwrap();
+    let tokens = lex(b"TZID:America/New_York\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
@@ -147,9 +165,7 @@ fn slash_in_unquoted_param_value_is_a_safe_char_not_an_error() {
     // `;`, `:`, `,`). A TZID param value like "America/New_York" is
     // ordinary, legal, unquoted param text and must not be rejected.
     let tokens =
-        Lexer::new(b"DTSTART;TZID=America/New_York:20240104T100000\r\n")
-            .scan()
-            .unwrap();
+        lex(b"DTSTART;TZID=America/New_York:20240104T100000\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
@@ -184,9 +200,7 @@ fn comma_separated_param_values_all_tokenize_as_param_value() {
     // out as ParamValue (never Identifier), and the `,` between them must
     // not reset param-value state the way `;` does.
     let tokens =
-        Lexer::new(b"ATTENDEE;DELEGATED-FROM=A,B:mailto:foo@example.com\r\n")
-            .scan()
-            .unwrap();
+        lex(b"ATTENDEE;DELEGATED-FROM=A,B:mailto:foo@example.com\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
@@ -219,9 +233,7 @@ fn quoted_string_param_value_is_supported() {
     // lexeme/literal must hold the unquoted content, not the surrounding
     // DQUOTEs.
     let tokens =
-        Lexer::new(b"ORGANIZER;CN=\"John Doe\":mailto:jdoe@example.com\r\n")
-            .scan()
-            .unwrap();
+        lex(b"ORGANIZER;CN=\"John Doe\":mailto:jdoe@example.com\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
@@ -250,7 +262,7 @@ fn quoted_string_param_value_is_supported() {
 
 #[test]
 fn lone_cr_followed_by_non_lf_errors_gracefully() {
-    let res = Lexer::new(b"BEGIN\rX").scan();
+    let res = lex(b"BEGIN\rX");
     assert!(matches!(res, Err(LexerError::Crlf { line: 0 })));
 }
 
@@ -259,6 +271,6 @@ fn trailing_bare_cr_errors_gracefully_instead_of_panicking() {
     // A `\r` as the very last byte of the source, with no trailing `\n`,
     // is malformed input, not a memory-safety incident: the lexer must
     // return `LexerError::Crlf`, never read past the end of the buffer.
-    let res = Lexer::new(b"BEGIN:VCALENDAR\r").scan();
+    let res = lex(b"BEGIN:VCALENDAR\r");
     assert!(matches!(res, Err(LexerError::Crlf { .. })));
 }

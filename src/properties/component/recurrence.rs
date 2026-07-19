@@ -1,6 +1,8 @@
-use crate::params::{TimeZoneIdentifier, ValueDataType};
-use crate::properties::SharedParams;
-use crate::values::{DateOrDatetime, DateTimePeriod, Recur};
+use crate::{
+    params::{TimeZoneIdentifier, ValueDataType},
+    properties::SharedParams,
+    values::{DateOrDatetime, DateTimePeriod, Recur},
+};
 
 /// This property defines the list of DATE-TIME exceptions for recurring events,
 /// to-dos, journal entries, or time zone definitions.

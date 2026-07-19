@@ -1,5 +1,7 @@
-use crate::ast::{ParseResult, split_once};
-use crate::params::*;
+use crate::{
+    ast::{ParseResult, split_once},
+    params::*,
+};
 
 /// Convenience alias for the parsed param vector
 pub type Params = Vec<PropertyParams>;
@@ -79,7 +81,8 @@ enum PropertyParams {
 impl PropertyParams {
     fn parse(b: &[u8]) -> ParseResult<Vec<Self>> {
         let mut out = Vec::new();
-        // need to split by SEMICOLON BUT a SEMICOLON that is NOT in DOUBLE QUOTES
+        // need to split by SEMICOLON BUT a SEMICOLON that is NOT in DOUBLE
+        // QUOTES
         for s in b.split(|b| *b == b';') {
             let (n, v) = split_once(s, b'=')?;
             let res = match n {

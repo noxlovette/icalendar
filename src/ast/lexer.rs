@@ -34,6 +34,7 @@ impl<'a> Lexer<'a> {
             ..Default::default()
         }
     }
+
     /// scans the source for tokens
     pub fn scan(mut self) -> Result<Vec<Token<'a>>, LexerError> {
         use super::token::TokenType::*;
@@ -115,13 +116,27 @@ impl<'a> Lexer<'a> {
             return;
         }
 
-        let upper = text.to_ascii_uppercase();
-        match KEYWORDS.get(upper.as_slice()) {
-            None => self
-                .tokens
-                .push(Token::new(Identifier, text, None, self.line)),
-            Some(&tt) => {
-                self.tokens.push(Token::new(tt, &upper, None, self.line))
+        // Real-world input follows the RFC 5545 §2 convention of writing
+        // names in uppercase already, so only pay for the fold (and its
+        // allocation) when the text actually contains a lowercase byte.
+        if text.iter().any(u8::is_ascii_lowercase) {
+            let upper = text.to_ascii_uppercase();
+            match KEYWORDS.get(upper.as_slice()) {
+                None => self
+                    .tokens
+                    .push(Token::new(Identifier, &upper, None, self.line)),
+                Some(&tt) => {
+                    self.tokens.push(Token::new(tt, &upper, None, self.line))
+                }
+            }
+        } else {
+            match KEYWORDS.get(text) {
+                None => self
+                    .tokens
+                    .push(Token::new(Identifier, text, None, self.line)),
+                Some(&tt) => {
+                    self.tokens.push(Token::new(tt, text, None, self.line))
+                }
             }
         }
     }
@@ -135,7 +150,9 @@ impl<'a> Lexer<'a> {
             Some(offset) => self.current += offset,
             None => {
                 self.current = self.source.len();
-                return Err(LexerError::UnterminatedQuotedString { line: self.line });
+                return Err(LexerError::UnterminatedQuotedString {
+                    line: self.line,
+                });
             }
         }
 

@@ -20,8 +20,8 @@
 /// # Example
 ///
 /// > DESCRIPTION:This is a lo
-/// >  ng description
-/// >   that exists on a long line.
+/// > ng description
+/// > that exists on a long line.
 ///
 /// unfolds to:
 ///

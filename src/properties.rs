@@ -15,7 +15,8 @@ use crate::{
     values::Text,
 };
 
-/// This trait ensures that all parameters as used in properties have iana and x-name params 100% of the time
+/// This trait ensures that all parameters as used in properties have iana and
+/// x-name params 100% of the time
 pub trait Params: Default + Debug {
     fn get_iana(&self) -> &[Text];
     fn get_xname(&self) -> &[Text];
@@ -34,6 +35,7 @@ impl Params for SharedParams {
     fn get_iana(&self) -> &[Text] {
         &self.iana
     }
+
     fn get_xname(&self) -> &[Text] {
         &self.xname
     }
