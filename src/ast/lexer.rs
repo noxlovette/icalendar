@@ -1,6 +1,5 @@
 use super::token::{Token, TokenType};
 use crate::ast::token::TokenType::{Identifier, ParamValue, Value};
-use std::{collections::HashMap, sync::LazyLock};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -89,9 +88,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn value(&mut self) {
-        while !self.is_at_end() && self.peek() != b'\r' {
-            self.next();
-        }
+        let rest = &self.source[self.current..];
+        self.current += memchr::memchr(b'\r', rest).unwrap_or(rest.len());
 
         let text = &self.source[self.start..self.current];
 
@@ -132,12 +130,13 @@ impl<'a> Lexer<'a> {
         // Skip the opening DQUOTE — it's not part of the value.
         self.start = self.current;
 
-        while !self.is_at_end() && self.peek() != b'"' {
-            self.next();
-        }
-
-        if self.is_at_end() {
-            return Err(LexerError::UnterminatedQuotedString { line: self.line });
+        let rest = &self.source[self.current..];
+        match memchr::memchr(b'"', rest) {
+            Some(offset) => self.current += offset,
+            None => {
+                self.current = self.source.len();
+                return Err(LexerError::UnterminatedQuotedString { line: self.line });
+            }
         }
 
         let text = &self.source[self.start..self.current];
@@ -187,98 +186,94 @@ impl<'a> Lexer<'a> {
     }
 }
 
-static KEYWORDS: LazyLock<HashMap<&'static [u8], TokenType>> =
-    LazyLock::new(|| {
-        use super::token::TokenType::*;
-        HashMap::from([
-            // --- component names, §3.6 ---
-            (b"BEGIN".as_slice(), Begin),
-            (b"END".as_slice(), End),
-            (b"VCALENDAR".as_slice(), VCalendar),
-            (b"VEVENT".as_slice(), VEvent),
-            (b"VTODO".as_slice(), VTodo),
-            (b"VJOURNAL".as_slice(), VJournal),
-            (b"VFREEBUSY".as_slice(), VFreeBusy),
-            (b"VTIMEZONE".as_slice(), VTimezone),
-            (b"VALARM".as_slice(), VAlarm),
-            (b"STANDARD".as_slice(), Standard),
-            (b"DAYLIGHT".as_slice(), Daylight),
-            // --- calendar properties, §3.7 ---
-            (b"CALSCALE".as_slice(), CalScale),
-            (b"METHOD".as_slice(), Method),
-            (b"PRODID".as_slice(), ProdId),
-            (b"VERSION".as_slice(), Version),
-            // --- descriptive properties, §3.8.1 ---
-            (b"ATTACH".as_slice(), Attach),
-            (b"CATEGORIES".as_slice(), Categories),
-            (b"CLASS".as_slice(), Class),
-            (b"COMMENT".as_slice(), Comment),
-            (b"DESCRIPTION".as_slice(), Description),
-            (b"GEO".as_slice(), Geo),
-            (b"LOCATION".as_slice(), Location),
-            (b"PERCENT-COMPLETE".as_slice(), PercentComplete),
-            (b"PRIORITY".as_slice(), Priority),
-            (b"RESOURCES".as_slice(), Resources),
-            (b"STATUS".as_slice(), Status),
-            (b"SUMMARY".as_slice(), Summary),
-            // --- date and time properties, §3.8.2 ---
-            (b"COMPLETED".as_slice(), Completed),
-            (b"DTEND".as_slice(), DtEnd),
-            (b"DUE".as_slice(), Due),
-            (b"DTSTART".as_slice(), DtStart),
-            (b"DURATION".as_slice(), Duration),
-            (b"FREEBUSY".as_slice(), FreeBusy),
-            (b"TRANSP".as_slice(), Transp),
-            // --- time zone properties, §3.8.3 ---
-            (b"TZID".as_slice(), TzId),
-            (b"TZNAME".as_slice(), TzName),
-            (b"TZOFFSETFROM".as_slice(), TzOffsetFrom),
-            (b"TZOFFSETTO".as_slice(), TzOffsetTo),
-            (b"TZURL".as_slice(), TzUrl),
-            // --- relationship properties, §3.8.4 ---
-            (b"ATTENDEE".as_slice(), Attendee),
-            (b"CONTACT".as_slice(), Contact),
-            (b"ORGANIZER".as_slice(), Organizer),
-            (b"RECURRENCE-ID".as_slice(), RecurrenceId),
-            (b"RELATED-TO".as_slice(), RelatedTo),
-            (b"URL".as_slice(), Url),
-            (b"UID".as_slice(), Uid),
-            // --- recurrence properties, §3.8.5 ---
-            (b"EXDATE".as_slice(), ExDate),
-            (b"RDATE".as_slice(), RDate),
-            (b"RRULE".as_slice(), RRule),
-            // --- alarm properties, §3.8.6 ---
-            (b"ACTION".as_slice(), Action),
-            (b"REPEAT".as_slice(), Repeat),
-            (b"TRIGGER".as_slice(), Trigger),
-            // --- change management properties, §3.8.7 ---
-            (b"CREATED".as_slice(), Created),
-            (b"DTSTAMP".as_slice(), DtStamp),
-            (b"LAST-MODIFIED".as_slice(), LastModified),
-            (b"SEQUENCE".as_slice(), Sequence),
-            // --- miscellaneous properties, §3.8.8 ---
-            (b"REQUEST-STATUS".as_slice(), RequestStatus),
-            // --- property parameters, §3.2 ---
-            (b"ALTREP".as_slice(), Altrep),
-            (b"CN".as_slice(), Cn),
-            (b"CUTYPE".as_slice(), CuType),
-            (b"DELEGATED-FROM".as_slice(), DelegatedFrom),
-            (b"DELEGATED-TO".as_slice(), DelegatedTo),
-            (b"DIR".as_slice(), Dir),
-            (b"ENCODING".as_slice(), Encoding),
-            (b"FMTTYPE".as_slice(), FmtType),
-            (b"FBTYPE".as_slice(), FbType),
-            (b"LANGUAGE".as_slice(), Language),
-            (b"MEMBER".as_slice(), Member),
-            (b"PARTSTAT".as_slice(), PartStat),
-            (b"RANGE".as_slice(), Range),
-            (b"RELATED".as_slice(), Related),
-            (b"RELTYPE".as_slice(), RelType),
-            (b"ROLE".as_slice(), Role),
-            (b"RSVP".as_slice(), Rsvp),
-            (b"SENT-BY".as_slice(), SentBy),
-        ])
-    });
+static KEYWORDS: phf::Map<&'static [u8], TokenType> = phf::phf_map! {
+    // --- component names, §3.6 ---
+    b"BEGIN" => TokenType::Begin,
+    b"END" => TokenType::End,
+    b"VCALENDAR" => TokenType::VCalendar,
+    b"VEVENT" => TokenType::VEvent,
+    b"VTODO" => TokenType::VTodo,
+    b"VJOURNAL" => TokenType::VJournal,
+    b"VFREEBUSY" => TokenType::VFreeBusy,
+    b"VTIMEZONE" => TokenType::VTimezone,
+    b"VALARM" => TokenType::VAlarm,
+    b"STANDARD" => TokenType::Standard,
+    b"DAYLIGHT" => TokenType::Daylight,
+    // --- calendar properties, §3.7 ---
+    b"CALSCALE" => TokenType::CalScale,
+    b"METHOD" => TokenType::Method,
+    b"PRODID" => TokenType::ProdId,
+    b"VERSION" => TokenType::Version,
+    // --- descriptive properties, §3.8.1 ---
+    b"ATTACH" => TokenType::Attach,
+    b"CATEGORIES" => TokenType::Categories,
+    b"CLASS" => TokenType::Class,
+    b"COMMENT" => TokenType::Comment,
+    b"DESCRIPTION" => TokenType::Description,
+    b"GEO" => TokenType::Geo,
+    b"LOCATION" => TokenType::Location,
+    b"PERCENT-COMPLETE" => TokenType::PercentComplete,
+    b"PRIORITY" => TokenType::Priority,
+    b"RESOURCES" => TokenType::Resources,
+    b"STATUS" => TokenType::Status,
+    b"SUMMARY" => TokenType::Summary,
+    // --- date and time properties, §3.8.2 ---
+    b"COMPLETED" => TokenType::Completed,
+    b"DTEND" => TokenType::DtEnd,
+    b"DUE" => TokenType::Due,
+    b"DTSTART" => TokenType::DtStart,
+    b"DURATION" => TokenType::Duration,
+    b"FREEBUSY" => TokenType::FreeBusy,
+    b"TRANSP" => TokenType::Transp,
+    // --- time zone properties, §3.8.3 ---
+    b"TZID" => TokenType::TzId,
+    b"TZNAME" => TokenType::TzName,
+    b"TZOFFSETFROM" => TokenType::TzOffsetFrom,
+    b"TZOFFSETTO" => TokenType::TzOffsetTo,
+    b"TZURL" => TokenType::TzUrl,
+    // --- relationship properties, §3.8.4 ---
+    b"ATTENDEE" => TokenType::Attendee,
+    b"CONTACT" => TokenType::Contact,
+    b"ORGANIZER" => TokenType::Organizer,
+    b"RECURRENCE-ID" => TokenType::RecurrenceId,
+    b"RELATED-TO" => TokenType::RelatedTo,
+    b"URL" => TokenType::Url,
+    b"UID" => TokenType::Uid,
+    // --- recurrence properties, §3.8.5 ---
+    b"EXDATE" => TokenType::ExDate,
+    b"RDATE" => TokenType::RDate,
+    b"RRULE" => TokenType::RRule,
+    // --- alarm properties, §3.8.6 ---
+    b"ACTION" => TokenType::Action,
+    b"REPEAT" => TokenType::Repeat,
+    b"TRIGGER" => TokenType::Trigger,
+    // --- change management properties, §3.8.7 ---
+    b"CREATED" => TokenType::Created,
+    b"DTSTAMP" => TokenType::DtStamp,
+    b"LAST-MODIFIED" => TokenType::LastModified,
+    b"SEQUENCE" => TokenType::Sequence,
+    // --- miscellaneous properties, §3.8.8 ---
+    b"REQUEST-STATUS" => TokenType::RequestStatus,
+    // --- property parameters, §3.2 ---
+    b"ALTREP" => TokenType::Altrep,
+    b"CN" => TokenType::Cn,
+    b"CUTYPE" => TokenType::CuType,
+    b"DELEGATED-FROM" => TokenType::DelegatedFrom,
+    b"DELEGATED-TO" => TokenType::DelegatedTo,
+    b"DIR" => TokenType::Dir,
+    b"ENCODING" => TokenType::Encoding,
+    b"FMTTYPE" => TokenType::FmtType,
+    b"FBTYPE" => TokenType::FbType,
+    b"LANGUAGE" => TokenType::Language,
+    b"MEMBER" => TokenType::Member,
+    b"PARTSTAT" => TokenType::PartStat,
+    b"RANGE" => TokenType::Range,
+    b"RELATED" => TokenType::Related,
+    b"RELTYPE" => TokenType::RelType,
+    b"ROLE" => TokenType::Role,
+    b"RSVP" => TokenType::Rsvp,
+    b"SENT-BY" => TokenType::SentBy,
+};
 
 pub(crate) mod unfold;
 pub use unfold::unfold;
