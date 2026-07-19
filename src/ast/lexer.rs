@@ -280,5 +280,8 @@ static KEYWORDS: LazyLock<HashMap<&'static [u8], TokenType>> =
         ])
     });
 
+pub(crate) mod unfold;
+pub use unfold::unfold;
+
 #[cfg(test)]
 mod tests;
