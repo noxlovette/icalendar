@@ -5,7 +5,7 @@
 /// All other variants are RFC 5545 keyword tokens: calendar/component
 /// names (§3.6), calendar properties (§3.7), component properties (§3.8),
 /// and property parameter names (§3.2).
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     // --- structural ---
     /// `:`
@@ -207,14 +207,30 @@ pub enum TokenType {
 /// A single scanned token: its classified [`TokenType`], the raw source
 /// bytes it was scanned from, an optional decoded literal payload, and the
 /// logical (post-unfolding) content-line number it starts on.
-#[allow(dead_code)]
-pub struct Token {
-    pub token_type: TokenType,
+#[derive(Debug)]
+pub struct Token<'a> {
+    token_type: TokenType,
     /// Raw bytes exactly as scanned (e.g. `b"DTSTART"`, `b"America/New_York"`).
-    pub lexeme: Vec<u8>,
+    lexeme: &'a [u8],
     /// Decoded value payload — `Some` only for `Value`/`Identifier` tokens
     /// carrying a property or parameter value; `None` for keyword and
     /// structural tokens.
-    pub literal: Option<Vec<u8>>,
-    pub line: usize,
+    literal: Option<&'a [u8]>,
+    line: usize,
+}
+
+impl<'a> Token<'a> {
+    pub fn new(
+        t: TokenType,
+        lex: &'a [u8],
+        lit: Option<&'a [u8]>,
+        line: usize,
+    ) -> Self {
+        Self {
+            token_type: t,
+            lexeme: lex,
+            literal: lit,
+            line,
+        }
+    }
 }

@@ -1,16 +1,12 @@
 use std::str::Utf8Error;
 use thiserror::Error;
-pub mod component;
-pub mod params;
-pub mod prop;
-pub mod token;
-
-use token::Token;
-
-pub struct Parser {
-    tokens: Vec<Token>,
-    current: usize,
-}
+mod component;
+mod lexer;
+mod params;
+mod parser;
+mod property;
+mod token;
+mod validator;
 
 /// Splits a Bytes vector by given pattern
 pub(crate) fn split_once(b: &[u8], needle: u8) -> ParseResult<(&[u8], &[u8])> {
