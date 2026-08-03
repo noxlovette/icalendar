@@ -1,12 +1,11 @@
-use std::str::Utf8Error;
-use thiserror::Error;
 mod component;
-mod lexer;
+pub mod lexer;
 mod params;
-mod parser;
+pub mod parser;
 mod property;
 mod token;
 mod validator;
+use parser::{ParseError, ParseResult};
 
 /// Splits a Bytes vector by given pattern
 pub(crate) fn split_once(b: &[u8], needle: u8) -> ParseResult<(&[u8], &[u8])> {
@@ -41,47 +40,4 @@ pub(crate) fn strip_quoted_string(v: &[u8]) -> ParseResult<&[u8]> {
     v.strip_prefix(needle)
         .and_then(|s| s.strip_suffix(needle))
         .ok_or(ParseError::QuotedString)
-}
-
-/// Convenience wrapper for [ParseError]
-pub(crate) type ParseResult<T> = Result<T, ParseError>;
-
-#[derive(Error, Debug)]
-/// Parsing error
-pub enum ParseError {
-    /// Parameter Parsing Error
-    #[error("Parameter parsing failed. Expected {expected}, got {received:?}")]
-    Parameter {
-        /// What the parameter is supposed to be
-        expected: String,
-        /// What we actually received
-        received: Option<String>,
-    },
-
-    /// URL parsing error
-    #[error("Incorrect URL: {0}")]
-    URL(#[from] url::ParseError),
-
-    /// Quoted String Error
-    #[error("Not a quoted string value")]
-    QuotedString,
-
-    /// Encoding error
-    #[error("UTF-8 Error")]
-    UTF(#[from] Utf8Error),
-
-    /// [CalendarUserAddress] Parsing Error
-    #[error("Malformed CalenderUserAddress")]
-    CalUserAddress,
-
-    /// [MediaType] Parsing Error
-    #[error("Malformed MediaType")]
-    MediaType,
-
-    /// [Language] Parsing Error
-    #[error("Malformed Language")]
-    Language,
-
-    #[error("Malformed Boolean")]
-    Boolean,
 }

@@ -1,5 +1,5 @@
 use crate::{
-    ast::{ParseError, split_once},
+    ast::{parser::ParseError, split_once},
     params::TimeZoneIdentifier,
 };
 use base64::alphabet::Alphabet;

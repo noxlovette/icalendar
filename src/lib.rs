@@ -4,8 +4,6 @@
 pub(crate) mod ast;
 /// As specified [in the RFC Section 3.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6)
 mod components;
-/// Errors of the crate
-mod error;
 /// Sections 3.7 and 3.8 of the RFC
 pub mod properties;
 mod rrule;

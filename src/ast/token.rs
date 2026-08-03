@@ -240,4 +240,14 @@ impl<'a> Token<'a> {
             line,
         }
     }
+
+    pub fn get_type(&self) -> TokenType {
+        self.token_type
+    }
+    pub fn get_line(&self) -> usize {
+        self.line
+    }
+    pub fn get_lexeme_as_string(&self) -> String {
+        String::from_utf8(self.lexeme.clone()).unwrap_or_default()
+    }
 }
