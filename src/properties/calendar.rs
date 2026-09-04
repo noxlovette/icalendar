@@ -18,6 +18,7 @@ use crate::{properties::SharedParams, values::Text};
 /// > CALSCALE:GREGORIAN
 ///
 /// [Section 3.7.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.7.1)
+#[derive(Debug)]
 pub struct CalendarScale {
     value: Text,
     params: SharedParams,
@@ -39,6 +40,7 @@ pub struct CalendarScale {
 /// > METHOD:REQUEST
 ///
 /// [Section 3.7.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.7.2)
+#[derive(Debug)]
 pub struct Method {
     value: Text,
     params: SharedParams,
@@ -58,6 +60,7 @@ pub struct Method {
 /// > PRODID:-//ABC Corporation//NONSGML My Product//EN
 ///
 /// [Section 3.7.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.7.3)
+#[derive(Debug)]
 pub struct ProductIdentifier {
     value: Text,
     params: SharedParams,
@@ -70,6 +73,7 @@ pub struct ProductIdentifier {
 /// > VERSION:2.0
 ///
 /// [Section 3.7.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.7.4)
+#[derive(Debug)]
 pub struct Version {
     value: Text,
     params: SharedParams,

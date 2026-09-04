@@ -1,8 +1,6 @@
-mod component;
 pub mod lexer;
-mod params;
+mod node;
 pub mod parser;
-mod property;
 mod token;
 mod validator;
 use parser::{ParseError, ParseResult};

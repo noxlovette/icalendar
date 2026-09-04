@@ -2,14 +2,17 @@
 mod calendar;
 /// Section 3.8
 mod component;
-
 pub use calendar::*;
 pub use component::*;
-
 use std::fmt::Debug;
 
+#[derive(Debug)]
+/// X Property
 pub struct Xprop;
+#[derive(Debug)]
+/// IANA Propery
 pub struct Iana;
+
 use crate::{
     params::{Altrep, Language},
     values::Text,

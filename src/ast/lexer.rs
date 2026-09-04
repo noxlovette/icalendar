@@ -15,7 +15,7 @@ pub enum LexerError {
 #[derive(Debug, Default)]
 pub struct Lexer<'a> {
     source: &'a [u8],
-    tokens: Vec<Token<'a>>,
+    tokens: Vec<Token>,
     start: usize,
     current: usize,
     line: usize,
@@ -36,7 +36,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// scans the source for tokens
-    pub fn scan(mut self) -> Result<Vec<Token<'a>>, LexerError> {
+    pub fn scan(mut self) -> Result<Vec<Token>, LexerError> {
         use super::token::TokenType::*;
         while !self.is_at_end() {
             self.start = self.current;

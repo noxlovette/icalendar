@@ -1,3 +1,5 @@
+use std::clone;
+
 /// Every lexical token produced by scanning an iCalendar content stream.
 ///
 /// Structural/generic tokens cover the contentline grammar itself
@@ -210,7 +212,7 @@ pub enum TokenType {
 /// bytes it was scanned from, an optional decoded literal payload, and the
 /// logical (post-unfolding) content-line number it starts on.
 #[derive(Debug)]
-pub struct Token<'a> {
+pub struct Token {
     token_type: TokenType,
     /// Bytes as scanned, normalized per [Section 2](https://datatracker.ietf.org/doc/html/rfc5545#section-2):
     /// names of properties, property parameters, and enumerated property
@@ -222,21 +224,21 @@ pub struct Token<'a> {
     /// Decoded value payload — `Some` only for `Value`/`ParamValue` tokens
     /// carrying a property or parameter value; `None` for keyword,
     /// `Identifier`, and structural tokens.
-    literal: Option<&'a [u8]>,
+    literal: Vec<u8>,
     line: usize,
 }
 
-impl<'a> Token<'a> {
+impl Token {
     pub fn new(
         t: TokenType,
         lex: &[u8],
-        lit: Option<&'a [u8]>,
+        lit: Option<&[u8]>,
         line: usize,
     ) -> Self {
         Self {
             token_type: t,
             lexeme: lex.to_vec(),
-            literal: lit,
+            literal: lit.map(|v| v.to_vec()).unwrap_or_default(),
             line,
         }
     }

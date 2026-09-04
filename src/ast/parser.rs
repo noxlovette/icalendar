@@ -1,29 +1,64 @@
+use super::node::Node;
 use super::token::Token;
-use crate::ast::token::TokenType::{self, *};
+use crate::{
+    ast::token::TokenType::{self, *},
+    components::Component::Todo,
+};
+use TokenType::*;
 use std::str::Utf8Error;
 use thiserror::Error;
 
 /// parses Tokens into valid iCal Formal Grammar
 #[derive(Default, Debug)]
-pub struct Parser<'a> {
-    tokens: Vec<Token<'a>>,
+pub struct Parser {
+    tokens: Vec<Token>,
+    nodes: Vec<Node>,
     current: usize,
 }
 
-impl<'a> Parser<'a> {
+impl Parser {
     /// creates a new parser
-    pub fn new(tokens: Vec<Token<'a>>) -> Self {
+    pub fn new(tokens: Vec<Token>) -> Self {
         Self {
             tokens,
             ..Default::default()
         }
     }
 
+    fn begin(&mut self) -> ParseResult<()> {
+        if self.check(Begin)? {
+            self.consume(Colon, "expected : after BEGIN clause")?;
+            if self.match_tokens(&[
+                VEvent, VAlarm, VFreeBusy, VTimezone, VTodo, VJournal,
+            ])? {
+                self.component()?;
+            } else if self.check(VCalendar)? {
+                self.calendar()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// checks for end at the end
+    fn calendar(&mut self) -> ParseResult<()> {
+        while self.match_tokens(&[ProdId, Version, CalScale, Method])? {
+            self.consume(Colon, "Expected : after calendar props")?;
+            todo!()
+        }
+        Ok(())
+    }
+
+    /// checks for end at the end
+    fn component(&mut self) -> ParseResult<()> {
+        todo!()
+    }
+
     /// checks if the next token corresponds to one of passed token types
-    fn match_tokens(&'a mut self, types: &'a [TokenType]) -> ParseResult<bool> {
+    fn match_tokens(&mut self, types: &[TokenType]) -> ParseResult<bool> {
         for t in types {
             if self.check(*t)? {
-                self.next();
+                self.next()?;
                 return Ok(true);
             }
         }
@@ -37,10 +72,10 @@ impl<'a> Parser<'a> {
 
     /// consumes a token that a certain grammar rule expects
     fn consume(
-        &'a mut self,
+        &mut self,
         tt: TokenType,
         msg: &'static str,
-    ) -> ParseResult<&'a Token<'a>> {
+    ) -> ParseResult<&Token> {
         if self.check(tt)? {
             self.next()
         } else {
@@ -66,14 +101,14 @@ impl<'a> Parser<'a> {
     }
 
     /// returns the next token. doesn't advance the parser
-    fn peek(&'a self) -> ParseResult<&'a Token<'a>> {
+    fn peek(&self) -> ParseResult<&Token> {
         self.tokens
             .get(self.current)
             .ok_or(ParseError::UnexpectedEof)
     }
 
     /// advances the parser and returns the next token
-    fn next(&'a mut self) -> ParseResult<&'a Token<'a>> {
+    fn next(&mut self) -> ParseResult<&Token> {
         if !self.is_at_end()? {
             self.current += 1;
         }
@@ -81,7 +116,7 @@ impl<'a> Parser<'a> {
     }
 
     /// gets the latest token
-    fn prev(&'a self) -> ParseResult<&'a Token<'a>> {
+    fn prev(&self) -> ParseResult<&Token> {
         self.tokens
             .get(self.current - 1)
             .ok_or(ParseError::EmptyTokenList)
