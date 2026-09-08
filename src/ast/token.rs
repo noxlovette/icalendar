@@ -243,13 +243,19 @@ impl Token {
         }
     }
 
-    pub fn get_type(&self) -> TokenType {
+    pub fn token_type(&self) -> TokenType {
         self.token_type
     }
-    pub fn get_line(&self) -> usize {
+    pub fn line(&self) -> usize {
         self.line
     }
-    pub fn get_lexeme_as_string(&self) -> String {
+    pub fn literal(&self) -> &[u8] {
+        self.literal.as_ref()
+    }
+    pub fn lexeme(&self) -> &[u8] {
+        self.lexeme.as_ref()
+    }
+    pub fn lexeme_as_string(&self) -> String {
         String::from_utf8(self.lexeme.clone()).unwrap_or_default()
     }
 }

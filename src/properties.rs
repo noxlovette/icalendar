@@ -14,6 +14,7 @@ pub struct Xprop;
 pub struct Iana;
 
 use crate::{
+    ast::parser::ParseError,
     params::{Altrep, Language},
     values::Text,
 };
@@ -32,6 +33,13 @@ pub trait Params: Default + Debug {
 struct SharedParams {
     iana: Vec<Text>,
     xname: Vec<Text>,
+}
+
+impl TryFrom<&[u8]> for SharedParams {
+    type Error = ParseError;
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        todo!()
+    }
 }
 
 impl Params for SharedParams {

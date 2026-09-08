@@ -1,8 +1,10 @@
-use super::node::Node;
 use super::token::Token;
 use crate::{
+    Calendar,
     ast::token::TokenType::{self, *},
-    components::Component::Todo,
+    properties::{
+        CalendarScale, Iana, Method, ProductIdentifier, Version, Xprop,
+    },
 };
 use TokenType::*;
 use std::str::Utf8Error;
@@ -12,8 +14,63 @@ use thiserror::Error;
 #[derive(Default, Debug)]
 pub struct Parser {
     tokens: Vec<Token>,
-    nodes: Vec<Node>,
+    calendar: CalendarBuilder,
     current: usize,
+    depth: Depth,
+}
+
+#[derive(Default, Debug)]
+struct CalendarBuilder {
+    prodid: Option<ProductIdentifier>,
+    version: Option<Version>,
+    calscale: Option<CalendarScale>,
+    method: Option<Method>,
+    xprop: Vec<Xprop>,
+    iana: Vec<Iana>,
+    components: Vec<ComponentBuilder>,
+}
+
+impl CalendarBuilder {
+    /// creates a new cal builder
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn build(self) -> Result<Calendar, CalendarError> {
+        todo!()
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum CalendarError {
+    #[error("Missing field: {0}")]
+    MissingField(&'static str),
+}
+
+#[derive(Debug)]
+struct ComponentBuilder;
+
+/// how deep in the tree we are
+#[derive(Default, Debug)]
+pub enum Depth {
+    #[default]
+    Root,
+    Component,
+    Property,
+    Value,
+    Param,
+}
+
+impl Depth {
+    fn increase(&mut self) {
+        match self {
+            Self::Root => *self = Self::Component,
+            Self::Component => *self = Self::Property,
+            Self::Property => *self = Self::Value,
+            Self::Value => *self = Self::Param,
+            _ => {}
+        }
+    }
 }
 
 impl Parser {
@@ -25,7 +82,7 @@ impl Parser {
         }
     }
 
-    fn begin(&mut self) -> ParseResult<()> {
+    fn parse(&mut self) -> ParseResult<Calendar> {
         if self.check(Begin)? {
             self.consume(Colon, "expected : after BEGIN clause")?;
             if self.match_tokens(&[
@@ -35,26 +92,45 @@ impl Parser {
             } else if self.check(VCalendar)? {
                 self.calendar()?;
             }
+        } else if self.check(End)? {
+            self.consume(Colon, "expected : after END clause")?;
         }
 
-        Ok(())
+        Ok(todo!("built"))
     }
 
-    /// checks for end at the end
-    fn calendar(&mut self) -> ParseResult<()> {
-        while self.match_tokens(&[ProdId, Version, CalScale, Method])? {
-            self.consume(Colon, "Expected : after calendar props")?;
-            todo!()
+    fn calendar(&mut self) -> ParseResult<Calendar> {
+        let mut cal = CalendarBuilder::new();
+        match self.property()? {
+            ProdId => {
+                cal.prodid = Some(self.next()?.lexeme().try_into()?);
+            }
+            Version => {
+                cal.version = Some(self.next()?.lexeme().try_into()?);
+            }
+            Method => {
+                cal.method = Some(self.next()?.lexeme().try_into()?);
+            }
+            CalScale => {
+                cal.calscale = Some(self.next()?.lexeme().try_into()?);
+            }
+            _ => {} // TODO: check for x and iana
         }
-        Ok(())
+
+        // done processing the calendar, going one way deeper
+        self.depth.increase();
+        let components = self.component();
+
+        Ok(cal.build()?)
     }
 
-    /// checks for end at the end
     fn component(&mut self) -> ParseResult<()> {
         todo!()
     }
 
     /// checks if the next token corresponds to one of passed token types
+    ///
+    /// moves on if matches
     fn match_tokens(&mut self, types: &[TokenType]) -> ParseResult<bool> {
         for t in types {
             if self.check(*t)? {
@@ -67,7 +143,7 @@ impl Parser {
 
     /// returns true if the next token corresponds to the one passed to the function. false if we have reached the end of the vector
     fn check(&mut self, t: TokenType) -> ParseResult<bool> {
-        Ok(self.peek()?.get_type() == t)
+        Ok(self.peek()?.token_type() == t)
     }
 
     /// consumes a token that a certain grammar rule expects
@@ -87,9 +163,9 @@ impl Parser {
     fn error(&self, msg: &'static str) -> ParseError {
         match self.peek() {
             Ok(t) => ParseError::UnexpectedToken {
-                line: t.get_line(),
+                line: t.line(),
                 msg,
-                lexeme: t.get_lexeme_as_string(),
+                lexeme: t.lexeme_as_string(),
             },
             Err(e) => e,
         }
@@ -97,7 +173,7 @@ impl Parser {
 
     /// checks whether we are at the end of the tokens list
     fn is_at_end(&self) -> ParseResult<bool> {
-        Ok(self.peek()?.get_type() == Eof)
+        Ok(self.peek()?.token_type() == Eof)
     }
 
     /// returns the next token. doesn't advance the parser
@@ -120,6 +196,15 @@ impl Parser {
         self.tokens
             .get(self.current - 1)
             .ok_or(ParseError::EmptyTokenList)
+    }
+
+    /// shorthand for advance, consume colon, return what the token was
+    fn property(&mut self) -> ParseResult<TokenType> {
+        let tt = self.peek()?.token_type();
+        self.next()?;
+        self.consume(Colon, "Expected :")?;
+
+        Ok(tt)
     }
 }
 
@@ -177,4 +262,7 @@ pub enum ParseError {
 
     #[error("Ran prev on an empty token list")]
     EmptyTokenList,
+
+    #[error(transparent)]
+    Calendar(#[from] CalendarError),
 }
