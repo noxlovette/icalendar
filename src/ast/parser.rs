@@ -2,8 +2,9 @@ use super::token::Token;
 use crate::{
     Calendar,
     ast::{
-        CalendarBuilder, Component, EventBuilder, FreeBusyBuilder,
-        JournalBuilder, TodoBuilder, token::TokenType,
+        CalendarBuilder, CalendarError, Component, EventBuilder,
+        FreeBusyBuilder, JournalBuilder, Property, TodoBuilder,
+        parse_property, token::TokenType,
     },
 };
 use TokenType::*;
@@ -11,41 +12,22 @@ use std::str::Utf8Error;
 use thiserror::Error;
 
 /// parses Tokens into valid iCal Formal Grammar
+///
+/// The grammar is recursive-descent, top-down, single-token lookahead:
+/// [`Self::calendar`] recurses into [`Self::component`] on `BEGIN`, which
+/// recurses further for nested components (`VALARM` inside `VEVENT`, etc.
+/// — not yet wired up). There's no sub-line grammar left to descend into
+/// here — a property line arrives from the lexer as one opaque
+/// [`TokenType::Property`] token, and [`parse_property`] (backed by a
+/// name -> parser dispatch table, see `crate::ast::PROPERTY_DISPATCH`)
+/// hands back a fully-parsed [`Property`] in one step.
 #[derive(Default, Debug)]
 pub struct Parser {
     tokens: Vec<Token>,
-    calendar: CalendarBuilder,
     current: usize,
-    depth: Depth,
 }
 
-#[derive(Debug)]
-struct ComponentBuilder;
-
-/// how deep in the tree we are
-#[derive(Default, Debug)]
-pub enum Depth {
-    #[default]
-    Root,
-    Component,
-    Property,
-    Value,
-    Param,
-}
-
-impl Depth {
-    fn increase(&mut self) {
-        match self {
-            Self::Root => *self = Self::Component,
-            Self::Component => *self = Self::Property,
-            Self::Property => *self = Self::Value,
-            Self::Value => *self = Self::Param,
-            _ => {}
-        }
-    }
-}
-
-impl<'a> Parser {
+impl Parser {
     /// creates a new parser
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
@@ -54,73 +36,68 @@ impl<'a> Parser {
         }
     }
 
-    fn parse(&mut self) -> ParseResult<Calendar> {
-        if self.check(Begin)? {
-            self.consume(Colon, "expected : after BEGIN clause")?;
-            if self.match_tokens(&[
-                VEvent, VAlarm, VFreeBusy, VTimezone, VTodo, VJournal,
-            ])? {
-                self.component()?;
-            } else if self.check(VCalendar)? {
-                self.calendar()?;
-            }
-        } else if self.check(End)? {
-            self.consume(Colon, "expected : after END clause")?;
-        }
-
-        Ok(todo!("built"))
-    }
-
-    fn calendar(&mut self) -> ParseResult<Calendar> {
+    /// main entry point
+    pub fn calendar(&mut self) -> ParseResult<Calendar> {
         let mut cal = CalendarBuilder::new();
 
-        // while we are not at the beginning of the first component
+        // Calendar properties (§3.7) precede any component.
         while !self.check(Begin)? {
-            match self.property()? {
-                ProdId => {
-                    cal.prodid = Some(self.next()?.lexeme().try_into()?);
-                }
-                Version => {
-                    cal.version = Some(self.next()?.lexeme().try_into()?);
-                }
-                Method => {
-                    cal.method = Some(self.next()?.lexeme().try_into()?);
-                }
-                CalScale => {
-                    cal.calscale = Some(self.next()?.lexeme().try_into()?);
-                }
-                _ => {} // TODO: check for x and iana
-            }
-
+            let prop =
+                self.consume(Property, "expected a calendar property")?;
+            let property = parse_property(prop.lexeme(), prop.literal())?;
             self.consume(Crlf, "expected crlf after property")?;
+
+            match property {
+                Property::ProductIdentifier(p) => cal.prodid = Some(p),
+                Property::Version(v) => cal.version = Some(v),
+                Property::Method(m) => cal.method = Some(m),
+                Property::CalendarScale(c) => cal.calscale = Some(c),
+                Property::Xprop(x) => cal.xprop.push(x),
+                Property::Iana(i) => cal.iana.push(i),
+                _ => return Err(ParseError::UnexpectedProperty),
+            }
         }
-        let mut components = self.component()?;
 
-        todo!("extend");
+        while self.check(Begin)? {
+            cal.components.push(self.component()?);
+        }
 
-        // bigger
-        self.consume(End, "expected the calendar to have an END")?;
-
-        Ok(cal.build()?)
+        todo!("consume the outer END:VCALENDAR and finish cal.build()")
     }
 
-    /// recursive function that returns a vec of components for a calendar
-    fn component(&mut self) -> ParseResult<Vec<Component>> {
-        self.consume(Begin, "Expected component to begin with BEGIN")?;
-        self.consume(Colon, "expected : after BEGIN clause")?;
-        let c: Component = match self.next()?.token_type() {
-            VEvent => EventBuilder::new().into(),
-            VTodo => TodoBuilder::new().into(),
-            VJournal => JournalBuilder::new().into(),
-            VFreeBusy => FreeBusyBuilder::new().into(),
+    /// parses one `BEGIN:<name> ... END:<name>` component, routing its
+    /// property lines into the matching builder
+    fn component(&mut self) -> ParseResult<Component> {
+        let begin =
+            self.consume(Begin, "expected component to start with BEGIN")?;
+        let name = begin.literal().to_vec();
+
+        let component: Component = match name.as_slice() {
+            b"VEVENT" => EventBuilder::new().into(),
+            b"VTODO" => TodoBuilder::new().into(),
+            b"VJOURNAL" => JournalBuilder::new().into(),
+            b"VFREEBUSY" => FreeBusyBuilder::new().into(),
             _ => return Err(ParseError::UnknownComponent),
         };
         self.consume(Crlf, "expected crlf after BEGIN")?;
-        // recursive call to property
-        todo!()
-    }
 
-    fn property(&mut self) -> ParseResult<Vec<P>> {}
+        while !self.check(End)? {
+            let prop = self.consume(Property, "expected a property line")?;
+            let _property = parse_property(prop.lexeme(), prop.literal())?;
+            self.consume(Crlf, "expected crlf after property")?;
+
+            todo!("route `_property` into `component`'s builder fields")
+        }
+
+        let end =
+            self.consume(End, "expected component to end with END")?;
+        if end.literal() != name.as_slice() {
+            return Err(ParseError::MismatchedEnd);
+        }
+        self.consume(Crlf, "expected crlf after END")?;
+
+        Ok(component)
+    }
 
     /// checks if the next token corresponds to one of passed token types
     ///
@@ -191,14 +168,6 @@ impl<'a> Parser {
             .get(self.current - 1)
             .ok_or(ParseError::EmptyTokenList)
     }
-
-    /// shorthand for advance, consume colon, return what the token was
-    fn property(&mut self) -> ParseResult<TokenType> {
-        let tt = self.next()?.token_type();
-        self.consume(Colon, "Expected :")?;
-
-        Ok(tt)
-    }
 }
 
 /// Convenience wrapper for [ParseError]
@@ -218,6 +187,12 @@ pub enum ParseError {
 
     #[error("unknown component")]
     UnknownComponent,
+
+    #[error("property is not valid at this position in the grammar")]
+    UnexpectedProperty,
+
+    #[error("component's END name doesn't match its BEGIN name")]
+    MismatchedEnd,
 
     /// URL parsing error
     #[error("Incorrect URL: {0}")]

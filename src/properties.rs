@@ -10,10 +10,12 @@
 /// value. Params (if any) are everything before that colon, individually
 /// `;`-split by [`param_segments`].
 fn value_start(v: &[u8]) -> Result<usize, crate::ast::parser::ParseError> {
-    crate::ast::find_unquoted(v, b':').ok_or(crate::ast::parser::ParseError::Parameter {
-        expected: "':' introducing the property value".into(),
-        received: std::str::from_utf8(v).ok().map(|s| s.into()),
-    })
+    crate::ast::find_unquoted(v, b':').ok_or(
+        crate::ast::parser::ParseError::Parameter {
+            expected: "':' introducing the property value".into(),
+            received: std::str::from_utf8(v).ok().map(|s| s.into()),
+        },
+    )
 }
 
 macro_rules! impl_try_from_bytes {
@@ -187,7 +189,8 @@ impl TryFrom<&[u8]> for AltrepLanguageParams {
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"ALTREP" => {
-                    params.altrep = Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.altrep =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
                 }
                 b"LANGUAGE" => {
                     params.language =

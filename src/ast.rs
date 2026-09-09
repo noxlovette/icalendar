@@ -103,7 +103,7 @@ impl From<FreeBusyBuilder> for Component {
 /// A calendar property, wrapping every property type defined in
 /// [`crate::properties`].
 #[derive(Debug)]
-enum Property {
+pub(crate) enum Property {
     /// `CALSCALE` ([`CalendarScale`]).
     CalendarScale(CalendarScale),
     /// `METHOD` ([`Method`]).
@@ -443,6 +443,87 @@ impl From<Iana> for Property {
     }
 }
 
+/// Parses a property's raw, unparsed remainder (`*(";" param) ":" value`,
+/// exactly what a [`TokenType::Property`](super::ast::token::TokenType::Property)
+/// token's `literal()` carries) into the matching [`Property`] variant,
+/// keyed by the token's upper-cased name (`lexeme()`).
+type PropertyParser = fn(&[u8]) -> ParseResult<Property>;
+
+/// Name -> parser dispatch table for every property RFC 5545 defines by
+/// keyword (§3.7, §3.8). This is the single place that knows "PRODID means
+/// a `ProductIdentifier`" — replacing what used to be a `TokenType` keyword
+/// classified by the lexer itself. Built with [`phf`] (the same mechanism
+/// the old lexer used for its `KEYWORDS` map) so the lookup stays O(1) —
+/// a compile-time perfect hash, not a `match` over byte-string patterns
+/// (which codegens as a comparison chain, not a jump table).
+static PROPERTY_DISPATCH: phf::Map<&'static [u8], PropertyParser> = phf::phf_map! {
+    b"CALSCALE" => |v| CalendarScale::try_from(v).map(Into::into),
+    b"METHOD" => |v| Method::try_from(v).map(Into::into),
+    b"PRODID" => |v| ProductIdentifier::try_from(v).map(Into::into),
+    b"VERSION" => |v| Version::try_from(v).map(Into::into),
+    b"ACTION" => |v| Action::try_from(v).map(Into::into),
+    b"REPEAT" => |v| Repeat::try_from(v).map(Into::into),
+    b"TRIGGER" => |v| Trigger::try_from(v).map(Into::into),
+    b"CREATED" => |v| DateTimeCreated::try_from(v).map(Into::into),
+    b"DTSTAMP" => |v| DateTimeStamp::try_from(v).map(Into::into),
+    b"LAST-MODIFIED" => |v| LastModified::try_from(v).map(Into::into),
+    b"SEQUENCE" => |v| Sequence::try_from(v).map(Into::into),
+    b"COMPLETED" => |v| Completed::try_from(v).map(Into::into),
+    b"DTEND" => |v| DateTimeEnd::try_from(v).map(Into::into),
+    b"DUE" => |v| DateTimeDue::try_from(v).map(Into::into),
+    b"DTSTART" => |v| DateTimeStart::try_from(v).map(Into::into),
+    b"DURATION" => |v| Duration::try_from(v).map(Into::into),
+    b"FREEBUSY" => |v| FreeBusyTime::try_from(v).map(Into::into),
+    b"TRANSP" => |v| TimeTransparency::try_from(v).map(Into::into),
+    b"REQUEST-STATUS" => |v| RequestStatus::try_from(v).map(Into::into),
+    b"ATTACH" => |v| Attachment::try_from(v).map(Into::into),
+    b"CATEGORIES" => |v| Categories::try_from(v).map(Into::into),
+    b"CLASS" => |v| Classification::try_from(v).map(Into::into),
+    b"COMMENT" => |v| Comment::try_from(v).map(Into::into),
+    b"DESCRIPTION" => |v| Description::try_from(v).map(Into::into),
+    b"GEO" => |v| Geo::try_from(v).map(Into::into),
+    b"LOCATION" => |v| Location::try_from(v).map(Into::into),
+    b"PERCENT-COMPLETE" => |v| PercentComplete::try_from(v).map(Into::into),
+    b"PRIORITY" => |v| Priority::try_from(v).map(Into::into),
+    b"RESOURCES" => |v| Resources::try_from(v).map(Into::into),
+    b"STATUS" => |v| Status::try_from(v).map(Into::into),
+    b"SUMMARY" => |v| Summary::try_from(v).map(Into::into),
+    b"ATTENDEE" => |v| Attendee::try_from(v).map(Into::into),
+    b"CONTACT" => |v| Contact::try_from(v).map(Into::into),
+    b"ORGANIZER" => |v| Organizer::try_from(v).map(Into::into),
+    b"RECURRENCE-ID" => |v| RecurrenceId::try_from(v).map(Into::into),
+    b"RELATED-TO" => |v| RelatedTo::try_from(v).map(Into::into),
+    b"URL" => |v| UniformResourceLocator::try_from(v).map(Into::into),
+    b"UID" => |v| Uid::try_from(v).map(Into::into),
+    b"TZID" => |v| TimeZoneIdentifier::try_from(v).map(Into::into),
+    b"TZNAME" => |v| TimeZoneName::try_from(v).map(Into::into),
+    b"TZOFFSETFROM" => |v| TimeZoneOffsetFrom::try_from(v).map(Into::into),
+    b"TZOFFSETTO" => |v| TimeZoneOffsetTo::try_from(v).map(Into::into),
+    b"TZURL" => |v| TimeZoneUrl::try_from(v).map(Into::into),
+    b"EXDATE" => |v| ExceptionDateTimes::try_from(v).map(Into::into),
+    b"RDATE" => |v| RecurrenceDateTimes::try_from(v).map(Into::into),
+    b"RRULE" => |v| RRule::try_from(v).map(Into::into),
+};
+
+/// Dispatches a [`TokenType::Property`](super::ast::token::TokenType::Property)
+/// token's name and raw remainder to the matching property type's
+/// `TryFrom<&[u8]>`. A name absent from [`PROPERTY_DISPATCH`] isn't an
+/// error — `X-`/IANA extension properties are open-ended by design
+/// ([Section 3.8.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.8))
+/// — it just falls back to [`Xprop`]/[`Iana`].
+pub(crate) fn parse_property(
+    name: &[u8],
+    remainder: &[u8],
+) -> ParseResult<Property> {
+    if let Some(parse) = PROPERTY_DISPATCH.get(name) {
+        parse(remainder)
+    } else if name.starts_with(b"X-") {
+        Xprop::try_from(remainder).map(Into::into)
+    } else {
+        Iana::try_from(remainder).map(Into::into)
+    }
+}
+
 #[derive(Default, Debug)]
 struct CalendarBuilder {
     prodid: Option<ProductIdentifier>,
@@ -466,7 +547,7 @@ impl CalendarBuilder {
 }
 
 #[derive(thiserror::Error, Debug)]
-enum CalendarError {
+pub(crate) enum CalendarError {
     #[error("Missing field: {0}")]
     MissingField(&'static str),
 }

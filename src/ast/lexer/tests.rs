@@ -12,17 +12,27 @@ fn lex(src: &[u8]) -> Result<Vec<Token>, LexerError> {
 }
 
 #[test]
-fn scans_a_single_property_contentline() {
-    let tokens = lex(b"BEGIN:VCALENDAR\r\n").unwrap();
-
-    // The Value token must hold only the value text after the `:`,
-    // not the colon itself.
+fn begin_end_carry_the_component_name_as_literal() {
+    let tokens = lex(b"BEGIN:VEVENT\r\nEND:VEVENT\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
-            Token::new(TokenType::Begin, b"BEGIN", None, 0),
-            Token::new(TokenType::Colon, b":", None, 0),
-            Token::new(TokenType::Value, b"VCALENDAR", Some(b"VCALENDAR"), 0),
+            Token::new(TokenType::Begin, b"BEGIN", Some(b"VEVENT"), 0),
+            Token::new(TokenType::Crlf, b"\r\n", None, 0),
+            Token::new(TokenType::End, b"END", Some(b"VEVENT"), 1),
+            Token::new(TokenType::Crlf, b"\r\n", None, 1),
+            Token::new(TokenType::Eof, b"", None, 2),
+        ],
+    );
+}
+
+#[test]
+fn begin_end_component_name_is_case_folded() {
+    let tokens = lex(b"begin:vevent\r\n").unwrap();
+    assert_tokens(
+        tokens,
+        vec![
+            Token::new(TokenType::Begin, b"BEGIN", Some(b"VEVENT"), 0),
             Token::new(TokenType::Crlf, b"\r\n", None, 0),
             Token::new(TokenType::Eof, b"", None, 1),
         ],
@@ -30,14 +40,28 @@ fn scans_a_single_property_contentline() {
 }
 
 #[test]
-fn recognizes_rfc5545_keywords_case_insensitively() {
-    let tokens = lex(b"RrUlE:FREQ=DAILY\r\n").unwrap();
+fn begin_without_colon_errors() {
+    let res = lex(b"BEGIN VEVENT\r\n");
+    assert!(matches!(res, Err(LexerError::ExpectedColon { line: 0 })));
+}
+
+#[test]
+fn a_property_line_becomes_one_property_token() {
+    // The lexer doesn't split params from the value, or interpret DQUOTEs
+    // at all — the whole `*(";" param) ":" value` remainder is opaque to
+    // it. That's `crate::properties::value_start`'s job, working directly
+    // off these raw bytes.
+    let tokens = lex(b"RECURRENCE-ID;RANGE=THISANDFUTURE:20240402T100000\r\n")
+        .unwrap();
     assert_tokens(
         tokens,
         vec![
-            Token::new(TokenType::RRule, b"RRULE", None, 0),
-            Token::new(TokenType::Colon, b":", None, 0),
-            Token::new(TokenType::Value, b"FREQ=DAILY", Some(b"FREQ=DAILY"), 0),
+            Token::new(
+                TokenType::Property,
+                b"RECURRENCE-ID",
+                Some(b";RANGE=THISANDFUTURE:20240402T100000"),
+                0,
+            ),
             Token::new(TokenType::Crlf, b"\r\n", None, 0),
             Token::new(TokenType::Eof, b"", None, 1),
         ],
@@ -45,14 +69,30 @@ fn recognizes_rfc5545_keywords_case_insensitively() {
 }
 
 #[test]
-fn unrecognized_name_becomes_identifier() {
+fn property_name_is_case_folded_but_remainder_is_left_verbatim() {
+    // Names are case-insensitive per §2; the value/param text after the
+    // name is not touched or folded by the lexer at all.
+    let tokens = lex(b"rrule:FREQ=Daily\r\n").unwrap();
+    assert_tokens(
+        tokens,
+        vec![
+            Token::new(TokenType::Property, b"RRULE", Some(b":FREQ=Daily"), 0),
+            Token::new(TokenType::Crlf, b"\r\n", None, 0),
+            Token::new(TokenType::Eof, b"", None, 1),
+        ],
+    );
+}
+
+#[test]
+fn unrecognized_property_name_is_still_a_property_token() {
+    // The lexer has no concept of a "known" vs "unknown" property name —
+    // that distinction (falling back to Xprop/Iana) lives entirely in the
+    // name -> parser dispatch table, not here.
     let tokens = lex(b"X-CUSTOM-PROP:value\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
-            Token::new(TokenType::Identifier, b"X-CUSTOM-PROP", None, 0),
-            Token::new(TokenType::Colon, b":", None, 0),
-            Token::new(TokenType::Value, b"value", Some(b"value"), 0),
+            Token::new(TokenType::Property, b"X-CUSTOM-PROP", Some(b":value"), 0),
             Token::new(TokenType::Crlf, b"\r\n", None, 0),
             Token::new(TokenType::Eof, b"", None, 1),
         ],
@@ -60,48 +100,21 @@ fn unrecognized_name_becomes_identifier() {
 }
 
 #[test]
-fn unrecognized_lowercase_name_is_normalized_to_uppercase() {
-    // Per token.rs's documented contract: identifier lexemes are
-    // case-folded the same as keyword lexemes, since RFC 5545 §2 makes
-    // names case-insensitive regardless of whether they're recognized.
-    let tokens = lex(b"x-custom-prop:value\r\n").unwrap();
+fn property_remainder_may_contain_arbitrary_punctuation_unparsed() {
+    // Semicolons, colons, commas and quotes inside the remainder all pass
+    // through untouched raw bytes — the lexer performs no quote-aware
+    // splitting of any kind.
+    let tokens = lex(
+        b"ATTENDEE;DELEGATED-FROM=\"a,b\":mailto:foo@example.com\r\n",
+    )
+    .unwrap();
     assert_tokens(
         tokens,
         vec![
-            Token::new(TokenType::Identifier, b"X-CUSTOM-PROP", None, 0),
-            Token::new(TokenType::Colon, b":", None, 0),
-            Token::new(TokenType::Value, b"value", Some(b"value"), 0),
-            Token::new(TokenType::Crlf, b"\r\n", None, 0),
-            Token::new(TokenType::Eof, b"", None, 1),
-        ],
-    );
-}
-
-#[test]
-fn semicolon_param_with_equals_tokenizes_name_and_value() {
-    let tokens =
-        lex(b"RECURRENCE-ID;RANGE=THISANDFUTURE:20240402T100000\r\n").unwrap();
-    assert_tokens(
-        tokens,
-        vec![
-            Token::new(TokenType::RecurrenceId, b"RECURRENCE-ID", None, 0),
-            Token::new(TokenType::Semicolon, b";", None, 0),
-            Token::new(TokenType::Range, b"RANGE", None, 0),
-            Token::new(TokenType::Equals, b"=", None, 0),
-            // Everything after `=` is param-value position, not name
-            // position, so this is a ParamValue token even though
-            // "THISANDFUTURE" also happens to not be a registered keyword.
             Token::new(
-                TokenType::ParamValue,
-                b"THISANDFUTURE",
-                Some(b"THISANDFUTURE"),
-                0,
-            ),
-            Token::new(TokenType::Colon, b":", None, 0),
-            Token::new(
-                TokenType::Value,
-                b"20240402T100000",
-                Some(b"20240402T100000"),
+                TokenType::Property,
+                b"ATTENDEE",
+                Some(b";DELEGATED-FROM=\"a,b\":mailto:foo@example.com"),
                 0,
             ),
             Token::new(TokenType::Crlf, b"\r\n", None, 0),
@@ -119,16 +132,12 @@ fn line_advances_after_each_crlf() {
     assert_tokens(
         tokens,
         vec![
-            Token::new(TokenType::Uid, b"UID", None, 0),
-            Token::new(TokenType::Colon, b":", None, 0),
-            Token::new(TokenType::Value, b"foo", Some(b"foo"), 0),
+            Token::new(TokenType::Property, b"UID", Some(b":foo"), 0),
             Token::new(TokenType::Crlf, b"\r\n", None, 0),
-            Token::new(TokenType::DtStamp, b"DTSTAMP", None, 1),
-            Token::new(TokenType::Colon, b":", None, 1),
             Token::new(
-                TokenType::Value,
-                b"20240102T090000Z",
-                Some(b"20240102T090000Z"),
+                TokenType::Property,
+                b"DTSTAMP",
+                Some(b":20240102T090000Z"),
                 1,
             ),
             Token::new(TokenType::Crlf, b"\r\n", None, 1),
@@ -138,131 +147,12 @@ fn line_advances_after_each_crlf() {
 }
 
 #[test]
-fn slash_in_raw_value_position_is_fine() {
-    // After a `:`, everything up to CRLF is the property value verbatim.
-    let tokens = lex(b"TZID:America/New_York\r\n").unwrap();
-    assert_tokens(
-        tokens,
-        vec![
-            Token::new(TokenType::TzId, b"TZID", None, 0),
-            Token::new(TokenType::Colon, b":", None, 0),
-            Token::new(
-                TokenType::Value,
-                b"America/New_York",
-                Some(b"America/New_York"),
-                0,
-            ),
-            Token::new(TokenType::Crlf, b"\r\n", None, 0),
-            Token::new(TokenType::Eof, b"", None, 1),
-        ],
-    );
-}
-
-#[test]
-fn slash_in_unquoted_param_value_is_a_safe_char_not_an_error() {
-    // §3.2: an unquoted param-value is `paramtext`, built from SAFE-CHAR,
-    // which explicitly includes `/` (SAFE-CHAR excludes only CTL, DQUOTE,
-    // `;`, `:`, `,`). A TZID param value like "America/New_York" is
-    // ordinary, legal, unquoted param text and must not be rejected.
-    let tokens =
-        lex(b"DTSTART;TZID=America/New_York:20240104T100000\r\n").unwrap();
-    assert_tokens(
-        tokens,
-        vec![
-            Token::new(TokenType::DtStart, b"DTSTART", None, 0),
-            Token::new(TokenType::Semicolon, b";", None, 0),
-            Token::new(TokenType::TzId, b"TZID", None, 0),
-            Token::new(TokenType::Equals, b"=", None, 0),
-            Token::new(
-                TokenType::ParamValue,
-                b"America/New_York",
-                Some(b"America/New_York"),
-                0,
-            ),
-            Token::new(TokenType::Colon, b":", None, 0),
-            Token::new(
-                TokenType::Value,
-                b"20240104T100000",
-                Some(b"20240104T100000"),
-                0,
-            ),
-            Token::new(TokenType::Crlf, b"\r\n", None, 0),
-            Token::new(TokenType::Eof, b"", None, 1),
-        ],
-    );
-}
-
-#[test]
-fn comma_separated_param_values_all_tokenize_as_param_value() {
-    // §3.2: param = param-name "=" param-value *("," param-value) — a
-    // single param can carry a list of values. Every value in the list,
-    // not just the first, is param-value position, so each one must come
-    // out as ParamValue (never Identifier), and the `,` between them must
-    // not reset param-value state the way `;` does.
-    let tokens =
-        lex(b"ATTENDEE;DELEGATED-FROM=A,B:mailto:foo@example.com\r\n").unwrap();
-    assert_tokens(
-        tokens,
-        vec![
-            Token::new(TokenType::Attendee, b"ATTENDEE", None, 0),
-            Token::new(TokenType::Semicolon, b";", None, 0),
-            Token::new(TokenType::DelegatedFrom, b"DELEGATED-FROM", None, 0),
-            Token::new(TokenType::Equals, b"=", None, 0),
-            Token::new(TokenType::ParamValue, b"A", Some(b"A"), 0),
-            Token::new(TokenType::Comma, b",", None, 0),
-            Token::new(TokenType::ParamValue, b"B", Some(b"B"), 0),
-            Token::new(TokenType::Colon, b":", None, 0),
-            Token::new(
-                TokenType::Value,
-                b"mailto:foo@example.com",
-                Some(b"mailto:foo@example.com"),
-                0,
-            ),
-            Token::new(TokenType::Crlf, b"\r\n", None, 0),
-            Token::new(TokenType::Eof, b"", None, 1),
-        ],
-    );
-}
-
-#[test]
-fn quoted_string_param_value_is_supported() {
-    // §3.2: param-value can be a quoted-string: DQUOTE *QSAFE-CHAR DQUOTE.
-    // QSAFE-CHAR permits any character except CTL and DQUOTE, so a quoted
-    // param-value may legally contain bytes (like the space here) that
-    // would be illegal in unquoted paramtext. The resulting token's
-    // lexeme/literal must hold the unquoted content, not the surrounding
-    // DQUOTEs.
-    let tokens =
-        lex(b"ORGANIZER;CN=\"John Doe\":mailto:jdoe@example.com\r\n").unwrap();
-    assert_tokens(
-        tokens,
-        vec![
-            Token::new(TokenType::Organizer, b"ORGANIZER", None, 0),
-            Token::new(TokenType::Semicolon, b";", None, 0),
-            Token::new(TokenType::Cn, b"CN", None, 0),
-            Token::new(TokenType::Equals, b"=", None, 0),
-            Token::new(
-                TokenType::ParamValue,
-                b"John Doe",
-                Some(b"John Doe"),
-                0,
-            ),
-            Token::new(TokenType::Colon, b":", None, 0),
-            Token::new(
-                TokenType::Value,
-                b"mailto:jdoe@example.com",
-                Some(b"mailto:jdoe@example.com"),
-                0,
-            ),
-            Token::new(TokenType::Crlf, b"\r\n", None, 0),
-            Token::new(TokenType::Eof, b"", None, 1),
-        ],
-    );
-}
-
-#[test]
 fn lone_cr_followed_by_non_lf_errors_gracefully() {
-    let res = lex(b"BEGIN\rX");
+    // A property's raw-remainder scan (`property()`) stops at `\r`
+    // without consuming it, so this exercises the main loop's CRLF
+    // handling specifically, not `component()`'s `BEGIN`/`END` colon
+    // check (see `begin_without_colon_errors` for that path).
+    let res = lex(b"UID:foo\rX");
     assert!(matches!(res, Err(LexerError::Crlf { line: 0 })));
 }
 
@@ -271,6 +161,15 @@ fn trailing_bare_cr_errors_gracefully_instead_of_panicking() {
     // A `\r` as the very last byte of the source, with no trailing `\n`,
     // is malformed input, not a memory-safety incident: the lexer must
     // return `LexerError::Crlf`, never read past the end of the buffer.
-    let res = lex(b"BEGIN:VCALENDAR\r");
+    let res = lex(b"UID:foo\r");
     assert!(matches!(res, Err(LexerError::Crlf { .. })));
+}
+
+#[test]
+fn unknown_lexeme_at_start_of_line_errors() {
+    let res = lex(b"!oops\r\n");
+    assert!(matches!(
+        res,
+        Err(LexerError::UnknownLexeme { line: 0, got: b'!' })
+    ));
 }
