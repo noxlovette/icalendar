@@ -31,6 +31,24 @@ pub(crate) fn match_name(b: &[u8], pat: &[u8]) -> ParseResult<()> {
     }
 }
 
+/// Finds the byte offset of the first unquoted occurrence of `needle` in
+/// `b`. A `needle` byte between two DQUOTE (`"`) characters doesn't count,
+/// since content lines and parameter values MAY contain the character
+/// they're normally split on once quoted (e.g. a `;` inside an `ALTREP`
+/// URI, or the `:` that starts the value appearing inside a quoted
+/// parameter value).
+pub(crate) fn find_unquoted(b: &[u8], needle: u8) -> Option<usize> {
+    let mut in_quotes = false;
+    for (i, &byte) in b.iter().enumerate() {
+        match byte {
+            b'"' => in_quotes = !in_quotes,
+            b if b == needle && !in_quotes => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Checks if a given value is in quotes and returns that value with the quotes
 /// stripped
 pub(crate) fn strip_quoted_string(v: &[u8]) -> ParseResult<&[u8]> {

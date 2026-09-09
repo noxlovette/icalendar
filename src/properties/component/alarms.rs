@@ -1,7 +1,7 @@
 use crate::{
-    ast::parser::ParseError,
+    ast::{parser::ParseError, split_once},
     params::{AlarmTriggerRelationship, TimeZoneIdentifier, ValueDataType},
-    properties::SharedParams,
+    properties::{SharedParams, param_name, param_segments},
     values::{DateTimeDuration, Integer, Text},
 };
 
@@ -32,6 +32,8 @@ pub enum ActionEnum {
     /// A non-standard `X-` prefixed action.
     XName(Text),
 }
+
+impl_try_from_bytes!(Action, ActionEnum);
 
 impl TryFrom<&[u8]> for ActionEnum {
     type Error = ParseError;
@@ -66,6 +68,8 @@ pub struct Repeat {
     params: SharedParams,
 }
 
+impl_try_from_bytes!(Repeat, Integer);
+
 /// This property specifies when an alarm will trigger.
 ///
 /// Example:
@@ -81,12 +85,39 @@ pub struct Trigger {
     params: TriggerParams,
 }
 
-#[derive(Debug)]
+impl_try_from_bytes!(Trigger, DateTimeDuration, TriggerParams);
+
+#[derive(Debug, Default)]
 struct TriggerParams {
     shared: SharedParams,
     value_data_type: Option<ValueDataType>,
     tz_identifier: Option<TimeZoneIdentifier>,
     trigger_relationship: Option<AlarmTriggerRelationship>,
+}
+
+impl TryFrom<&[u8]> for TriggerParams {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let mut params = Self::default();
+        for segment in param_segments(v) {
+            match param_name(segment)?.to_ascii_uppercase().as_slice() {
+                b"VALUE" => {
+                    params.value_data_type =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
+                }
+                b"TZID" => {
+                    params.tz_identifier =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
+                }
+                b"RELATED" => {
+                    params.trigger_relationship =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
+                }
+                _ => params.shared.absorb(segment)?,
+            }
+        }
+        Ok(params)
+    }
 }
 
 #[cfg(test)]

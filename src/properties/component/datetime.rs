@@ -1,16 +1,37 @@
 use crate::{
-    ast::parser::ParseError,
+    ast::{parser::ParseError, split_once},
     params::{Fbtype, TimeZoneIdentifier, ValueDataType},
-    properties::SharedParams,
+    properties::{SharedParams, param_name, param_segments},
     values::{DateOrDatetime, DateTime, Duration as DurationV, Period},
 };
 
 /// These params are shared by this module's component properties
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct DateTimeParams {
     shared: SharedParams,
     value_data_type: Option<ValueDataType>,
     tz_identifier: Option<TimeZoneIdentifier>,
+}
+
+impl TryFrom<&[u8]> for DateTimeParams {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let mut params = Self::default();
+        for segment in param_segments(v) {
+            match param_name(segment)?.to_ascii_uppercase().as_slice() {
+                b"VALUE" => {
+                    params.value_data_type =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
+                }
+                b"TZID" => {
+                    params.tz_identifier =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
+                }
+                _ => params.shared.absorb(segment)?,
+            }
+        }
+        Ok(params)
+    }
 }
 
 /// This property defines the date and time that a to-do was actually
@@ -27,6 +48,8 @@ pub struct Completed {
     params: SharedParams,
 }
 
+impl_try_from_bytes!(Completed, DateTime);
+
 /// This property specifies the date and time that a calendar component ends.
 ///
 /// Example:
@@ -42,6 +65,8 @@ pub struct DateTimeEnd {
     params: DateTimeParams,
 }
 
+impl_try_from_bytes!(DateTimeEnd, DateOrDatetime, DateTimeParams);
+
 /// This property defines the date and time that a to-do is expected to be
 /// completed.
 ///
@@ -56,6 +81,8 @@ pub struct DateTimeDue {
     params: DateTimeParams,
 }
 
+impl_try_from_bytes!(DateTimeDue, DateOrDatetime, DateTimeParams);
+
 /// This property specifies when the calendar component begins.
 ///
 /// Example:
@@ -68,6 +95,8 @@ pub struct DateTimeStart {
     value: DateOrDatetime,
     params: DateTimeParams,
 }
+
+impl_try_from_bytes!(DateTimeStart, DateOrDatetime, DateTimeParams);
 
 /// This property specifies a positive duration of time.
 ///
@@ -82,6 +111,8 @@ pub struct Duration {
     params: SharedParams,
 }
 
+impl_try_from_bytes!(Duration, DurationV);
+
 /// This property defines one or more free or busy time intervals.
 ///
 /// Example:
@@ -95,10 +126,28 @@ pub struct FreeBusyTime {
     params: FreeBusyTimeParams,
 }
 
-#[derive(Debug)]
+impl_try_from_bytes!(FreeBusyTime, Period, FreeBusyTimeParams);
+
+#[derive(Debug, Default)]
 struct FreeBusyTimeParams {
     shared: SharedParams,
     fb_time_type: Fbtype,
+}
+
+impl TryFrom<&[u8]> for FreeBusyTimeParams {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let mut params = Self::default();
+        for segment in param_segments(v) {
+            match param_name(segment)?.to_ascii_uppercase().as_slice() {
+                b"FBTYPE" => {
+                    params.fb_time_type = split_once(segment, b'=')?.1.try_into()?
+                }
+                _ => params.shared.absorb(segment)?,
+            }
+        }
+        Ok(params)
+    }
 }
 
 /// This property defines whether or not an event is transparent to busy time
@@ -114,6 +163,8 @@ pub struct TimeTransparency {
     value: TranspValue,
     params: SharedParams,
 }
+
+impl_try_from_bytes!(TimeTransparency, TranspValue);
 
 /// Time transparency value for [`TimeTransparency`].
 #[derive(Debug, Default)]

@@ -1,8 +1,8 @@
 use crate::{
     Pair,
-    ast::parser::ParseError,
+    ast::{parser::ParseError, split_once},
     params::{Encoding, Fmttype, Language, ValueDataType},
-    properties::{AltrepLanguageParams, SharedParams},
+    properties::{AltrepLanguageParams, SharedParams, param_name, param_segments},
     values::{Binary, Float, Integer, Text, Uri},
 };
 
@@ -26,6 +26,8 @@ pub struct Attachment {
     value: AttachmentValue,
     params: AttachmentParams,
 }
+
+impl_try_from_bytes!(Attachment, AttachmentValue, AttachmentParams);
 
 #[derive(Debug)]
 enum AttachmentValue {
@@ -59,6 +61,29 @@ struct AttachmentParams {
     fmttype: Option<Fmttype>,
 }
 
+impl TryFrom<&[u8]> for AttachmentParams {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let mut params = Self::default();
+        for segment in param_segments(v) {
+            match param_name(segment)?.to_ascii_uppercase().as_slice() {
+                b"ENCODING" => {
+                    params.encoding = Some(split_once(segment, b'=')?.1.try_into()?)
+                }
+                b"VALUE" => {
+                    params.value_data_type =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
+                }
+                b"FMTTYPE" => {
+                    params.fmttype = Some(split_once(segment, b'=')?.1.try_into()?)
+                }
+                _ => params.shared.absorb(segment)?,
+            }
+        }
+        Ok(params)
+    }
+}
+
 /// This property is used to specify categories or subtypes of the calendar
 /// component.  The categories are useful in searching for a calendar
 /// component of a particular type and category.  Within the "VEVENT",
@@ -76,10 +101,29 @@ pub struct Categories {
     params: CategoriesParams,
 }
 
-#[derive(Debug)]
+impl_try_from_bytes_list!(Categories, Text, CategoriesParams);
+
+#[derive(Debug, Default)]
 struct CategoriesParams {
     shared: SharedParams,
     language: Option<Language>,
+}
+
+impl TryFrom<&[u8]> for CategoriesParams {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let mut params = Self::default();
+        for segment in param_segments(v) {
+            match param_name(segment)?.to_ascii_uppercase().as_slice() {
+                b"LANGUAGE" => {
+                    params.language =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
+                }
+                _ => params.shared.absorb(segment)?,
+            }
+        }
+        Ok(params)
+    }
 }
 
 /// An access classification is only one component of the general security
@@ -111,6 +155,8 @@ pub struct Classification {
     value: ClassificationEnum,
     params: SharedParams,
 }
+
+impl_try_from_bytes!(Classification, ClassificationEnum);
 
 #[derive(Debug)]
 enum ClassificationEnum {
@@ -157,6 +203,8 @@ pub struct Comment {
     params: AltrepLanguageParams,
 }
 
+impl_try_from_bytes!(Comment, Text, AltrepLanguageParams);
+
 /// This property is used in the "VEVENT" and "VTODO" to capture lengthy
 /// textual descriptions associated with the activity.
 ///
@@ -173,6 +221,8 @@ pub struct Description {
     value: Text,
     params: AltrepLanguageParams,
 }
+
+impl_try_from_bytes!(Description, Text, AltrepLanguageParams);
 
 /// This property value specifies latitude and longitude, in that order
 /// (i.e., "LAT LON" ordering).  The longitude represents the location east
@@ -197,6 +247,8 @@ pub struct Geo {
     params: SharedParams,
 }
 
+impl_try_from_bytes!(Geo, Pair<Float>);
+
 /// Specific venues such as conference or meeting rooms may be explicitly
 /// specified using this property.  An alternate representation may be
 /// specified that is a URI that points to directory information with more
@@ -215,6 +267,8 @@ pub struct Location {
     value: Text,
     params: AltrepLanguageParams,
 }
+
+impl_try_from_bytes!(Location, Text, AltrepLanguageParams);
 
 /// The property value is a positive integer between 0 and 100.  A value of
 /// "0" indicates the to-do has not yet been started.  A value of "100"
@@ -235,6 +289,8 @@ pub struct PercentComplete {
     value: Integer,
     params: SharedParams,
 }
+
+impl_try_from_bytes!(PercentComplete, Integer);
 
 /// This priority is specified as an integer in the range 0 to 9.  A value
 /// of 0 specifies an undefined priority.  A value of 1 is the highest
@@ -262,6 +318,8 @@ pub struct Priority {
     params: SharedParams,
 }
 
+impl_try_from_bytes!(Priority, Integer);
+
 /// The property value is an arbitrary text.  More than one resource can be
 /// specified as a COMMA-separated list of resources.
 ///
@@ -275,6 +333,8 @@ pub struct Resources {
     value: Text,
     params: AltrepLanguageParams,
 }
+
+impl_try_from_bytes!(Resources, Text, AltrepLanguageParams);
 
 /// In a group-scheduled calendar component, the property is used by the
 /// "Organizer" to provide a confirmation of the event to the "Attendees".
@@ -296,6 +356,8 @@ pub struct Status {
     value: StatusValue,
     params: SharedParams,
 }
+
+impl_try_from_bytes!(Status, StatusValue);
 
 /// The full set of `STATUS` wire tokens across `VEVENT`, `VTODO`, and
 /// `VJOURNAL`. The raw property text alone doesn't say which component a
@@ -363,6 +425,8 @@ pub struct Summary {
     value: Text,
     params: AltrepLanguageParams,
 }
+
+impl_try_from_bytes!(Summary, Text, AltrepLanguageParams);
 
 #[cfg(test)]
 mod tests {
@@ -441,5 +505,25 @@ mod tests {
     #[test]
     fn status_value_rejects_unknown_token() {
         assert!(StatusValue::try_from(b"BOGUS".as_slice()).is_err());
+    }
+
+    #[test]
+    fn geo_property_keeps_the_internal_semicolon_in_the_value() {
+        // Regression test: the property-level macro used to split on the
+        // *first* ';' in the whole buffer, which would truncate GEO's
+        // "lat;lon" value at the latitude. It must split on the colon
+        // instead.
+        let geo = Geo::try_from(b":37.386013;-122.082932".as_slice()).unwrap();
+        let Pair(lat, lon) = geo.value;
+        assert_eq!(*lat, 37.386013);
+        assert_eq!(*lon, -122.082932);
+    }
+
+    #[test]
+    fn geo_property_with_params() {
+        let geo =
+            Geo::try_from(b";X-FOO=bar:37.386013;-122.082932".as_slice())
+                .unwrap();
+        assert_eq!(geo.params.xname.len(), 1);
     }
 }

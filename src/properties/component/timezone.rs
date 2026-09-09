@@ -1,6 +1,7 @@
 use crate::{
+    ast::{parser::ParseError, split_once},
     params::Language,
-    properties::SharedParams,
+    properties::{SharedParams, param_name, param_segments},
     values::{Text, Uri, UtcOffset},
 };
 
@@ -18,6 +19,8 @@ pub struct TimeZoneIdentifier {
     params: SharedParams,
 }
 
+impl_try_from_bytes!(TimeZoneIdentifier);
+
 /// This property specifies the customary designation for a time zone
 /// description.
 ///
@@ -32,10 +35,31 @@ pub struct TimeZoneName {
     params: TZNameParams,
 }
 
-#[derive(Debug)]
+impl_try_from_bytes!(TimeZoneName, Text, TZNameParams);
+
+#[derive(Debug, Default)]
 struct TZNameParams {
     shared: SharedParams,
-    language: Language,
+    // LANGUAGE is OPTIONAL on TZNAME per RFC 5545 §3.8.3.2 (every other
+    // LANGUAGE-bearing params struct in this crate models it the same way).
+    language: Option<Language>,
+}
+
+impl TryFrom<&[u8]> for TZNameParams {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let mut params = Self::default();
+        for segment in param_segments(v) {
+            match param_name(segment)?.to_ascii_uppercase().as_slice() {
+                b"LANGUAGE" => {
+                    params.language =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
+                }
+                _ => params.shared.absorb(segment)?,
+            }
+        }
+        Ok(params)
+    }
 }
 
 /// This property specifies the offset that is in use prior to this time zone
@@ -52,6 +76,8 @@ pub struct TimeZoneOffsetFrom {
     params: SharedParams,
 }
 
+impl_try_from_bytes!(TimeZoneOffsetFrom, UtcOffset);
+
 /// This property specifies the UTC offset that is in use in this time zone
 /// observance.
 ///
@@ -65,6 +91,8 @@ pub struct TimeZoneOffsetTo {
     value: UtcOffset,
     params: SharedParams,
 }
+
+impl_try_from_bytes!(TimeZoneOffsetTo, UtcOffset);
 
 /// This property provides a means for a VTIMEZONE component to point to a
 /// network location that can be used to retrieve an up-to-date version of
@@ -80,3 +108,5 @@ pub struct TimeZoneUrl {
     value: Uri,
     params: SharedParams,
 }
+
+impl_try_from_bytes!(TimeZoneUrl, Uri);

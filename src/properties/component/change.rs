@@ -35,6 +35,8 @@ pub struct DateTimeStamp {
     params: SharedParams,
 }
 
+impl_try_from_bytes!(DateTimeStamp, DateTime);
+
 /// This property specifies the date and time that the information associated
 /// with the calendar component was last revised in the calendar store.
 ///
@@ -49,6 +51,8 @@ pub struct LastModified {
     params: SharedParams,
 }
 
+impl_try_from_bytes!(LastModified, DateTime);
+
 /// This property defines the revision sequence number of the calendar component
 /// within a sequence of revisions.
 ///
@@ -62,3 +66,5 @@ pub struct Sequence {
     value: Integer,
     params: SharedParams,
 }
+
+impl_try_from_bytes!(Sequence, Integer);
