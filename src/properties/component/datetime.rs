@@ -1,4 +1,5 @@
 use crate::{
+    ast::parser::ParseError,
     params::{Fbtype, TimeZoneIdentifier, ValueDataType},
     properties::SharedParams,
     values::{DateOrDatetime, DateTime, Duration as DurationV, Period},
@@ -122,4 +123,40 @@ pub enum TranspValue {
     Opaque,
     /// Event does not block busy-time searches.
     Transparent,
+}
+
+impl TryFrom<&[u8]> for TranspValue {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        match v {
+            b"OPAQUE" => Ok(Self::Opaque),
+            b"TRANSPARENT" => Ok(Self::Transparent),
+            _ => Err(ParseError::Parameter {
+                expected: "OPAQUE or TRANSPARENT".into(),
+                received: std::str::from_utf8(v).ok().map(|s| s.into()),
+            }),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transp_value_tokens() {
+        assert!(matches!(
+            TranspValue::try_from(b"OPAQUE".as_slice()),
+            Ok(TranspValue::Opaque)
+        ));
+        assert!(matches!(
+            TranspValue::try_from(b"TRANSPARENT".as_slice()),
+            Ok(TranspValue::Transparent)
+        ));
+    }
+
+    #[test]
+    fn transp_value_rejects_unknown() {
+        assert!(TranspValue::try_from(b"BOGUS".as_slice()).is_err());
+    }
 }

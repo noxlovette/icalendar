@@ -1,8 +1,9 @@
 use crate::{
     Pair,
+    ast::parser::ParseError,
     params::{Encoding, Fmttype, Language, ValueDataType},
     properties::{AltrepLanguageParams, SharedParams},
-    values::{Float, Integer, Text},
+    values::{Binary, Float, Integer, Text, Uri},
 };
 
 /// This property is used in "VEVENT", "VTODO", and "VJOURNAL" calendar
@@ -28,8 +29,26 @@ pub struct Attachment {
 
 #[derive(Debug)]
 enum AttachmentValue {
-    Uri,
-    Binary,
+    /// A URI pointing to the resource.
+    Uri(Uri),
+    /// The resource's content, inlined and BASE64-decoded.
+    Binary(Binary),
+}
+
+impl TryFrom<&[u8]> for AttachmentValue {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        // RFC 5545 selects between these via the ENCODING/VALUE params,
+        // which aren't available at this parsing stage (the value is
+        // parsed before the params are). A valid URI always has a
+        // "scheme:" prefix that inline BASE64 content cannot produce
+        // (BASE64's alphabet has no ':'), so the shapes don't collide.
+        if let Ok(uri) = Uri::try_from(v) {
+            Ok(Self::Uri(uri))
+        } else {
+            Ok(Self::Binary(v.try_into()?))
+        }
+    }
 }
 
 #[derive(Default, Debug)]
@@ -98,6 +117,29 @@ enum ClassificationEnum {
     Public,
     Private,
     Confidential,
+    /// An IANA-registered classification.
+    Iana(Text),
+    /// A non-standard `X-` prefixed classification.
+    XName(Text),
+}
+
+impl TryFrom<&[u8]> for ClassificationEnum {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let r = match v {
+            b"PUBLIC" => Self::Public,
+            b"PRIVATE" => Self::Private,
+            b"CONFIDENTIAL" => Self::Confidential,
+            x => {
+                if x.to_ascii_uppercase().starts_with(b"X-") {
+                    Self::XName(x.try_into()?)
+                } else {
+                    Self::Iana(x.try_into()?)
+                }
+            }
+        };
+        Ok(r)
+    }
 }
 
 /// This property is used to specify a comment to the calendar user.
@@ -255,46 +297,53 @@ pub struct Status {
     params: SharedParams,
 }
 
+/// The full set of `STATUS` wire tokens across `VEVENT`, `VTODO`, and
+/// `VJOURNAL`. The raw property text alone doesn't say which component a
+/// `STATUS` belongs to (and `CANCELLED` is valid for all three), so parsing
+/// can't select a component-scoped variant the way [`Status`]'s doc implies
+/// per RFC 5545 §3.8.1.11 — this flat enum carries the union of tokens
+/// instead. Whether a given variant is valid for the component the
+/// `STATUS` is attached to (e.g. `NEEDS-ACTION` is only valid on a
+/// `VTODO`) is a validation concern for whoever builds the component, not
+/// this parse step.
 #[derive(Debug)]
 enum StatusValue {
-    Event(EventStatus),
-    Todo(TodoStatus),
-    Journal(JourStatus),
-}
-
-/// Status values for a `VEVENT` component.
-#[derive(Debug)]
-pub enum EventStatus {
-    /// Event is tentatively scheduled.
+    /// `VEVENT`: tentatively scheduled.
     Tentative,
-    /// Event is confirmed.
+    /// `VEVENT`: confirmed.
     Confirmed,
-    /// Event has been cancelled.
+    /// `VEVENT`/`VTODO`/`VJOURNAL`: cancelled.
     Cancelled,
-}
-
-/// Status values for a `VTODO` component.
-#[derive(Debug)]
-pub enum TodoStatus {
-    /// To-do has not yet been started.
+    /// `VTODO`: not yet started.
     NeedsAction,
-    /// To-do is complete.
+    /// `VTODO`: complete.
     Completed,
-    /// To-do is currently in progress.
-    InProgress,
-    /// To-do has been cancelled.
-    Cancelled,
+    /// `VTODO`: currently in process.
+    InProcess,
+    /// `VJOURNAL`: a draft.
+    Draft,
+    /// `VJOURNAL`: final.
+    Final,
 }
 
-/// Status values for a `VJOURNAL` component.
-#[derive(Debug)]
-pub enum JourStatus {
-    /// Journal entry is a draft.
-    Draft,
-    /// Journal entry is final.
-    Final,
-    /// Journal entry has been cancelled.
-    Cancelled,
+impl TryFrom<&[u8]> for StatusValue {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        match v {
+            b"TENTATIVE" => Ok(Self::Tentative),
+            b"CONFIRMED" => Ok(Self::Confirmed),
+            b"CANCELLED" => Ok(Self::Cancelled),
+            b"NEEDS-ACTION" => Ok(Self::NeedsAction),
+            b"COMPLETED" => Ok(Self::Completed),
+            b"IN-PROCESS" => Ok(Self::InProcess),
+            b"DRAFT" => Ok(Self::Draft),
+            b"FINAL" => Ok(Self::Final),
+            _ => Err(ParseError::Parameter {
+                expected: "a valid STATUS token".into(),
+                received: std::str::from_utf8(v).ok().map(|s| s.into()),
+            }),
+        }
+    }
 }
 
 /// This property is used in the "VEVENT", "VTODO", and "VJOURNAL" calendar
@@ -313,4 +362,84 @@ pub enum JourStatus {
 pub struct Summary {
     value: Text,
     params: AltrepLanguageParams,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classification_fixed_tokens() {
+        assert!(matches!(
+            ClassificationEnum::try_from(b"PUBLIC".as_slice()),
+            Ok(ClassificationEnum::Public)
+        ));
+        assert!(matches!(
+            ClassificationEnum::try_from(b"PRIVATE".as_slice()),
+            Ok(ClassificationEnum::Private)
+        ));
+        assert!(matches!(
+            ClassificationEnum::try_from(b"CONFIDENTIAL".as_slice()),
+            Ok(ClassificationEnum::Confidential)
+        ));
+    }
+
+    #[test]
+    fn classification_x_name_and_iana() {
+        assert!(matches!(
+            ClassificationEnum::try_from(b"X-COMPANY-INTERNAL".as_slice()),
+            Ok(ClassificationEnum::XName(_))
+        ));
+        assert!(matches!(
+            ClassificationEnum::try_from(b"SOME-IANA-TOKEN".as_slice()),
+            Ok(ClassificationEnum::Iana(_))
+        ));
+    }
+
+    #[test]
+    fn attachment_value_uri() {
+        assert!(matches!(
+            AttachmentValue::try_from(
+                b"ftp://example.com/pub/docs/agenda.doc".as_slice()
+            ),
+            Ok(AttachmentValue::Uri(_))
+        ));
+    }
+
+    #[test]
+    fn attachment_value_binary() {
+        assert!(matches!(
+            AttachmentValue::try_from(b"aGVsbG8=".as_slice()),
+            Ok(AttachmentValue::Binary(_))
+        ));
+    }
+
+    #[test]
+    fn status_value_shared_cancelled() {
+        assert!(matches!(
+            StatusValue::try_from(b"CANCELLED".as_slice()),
+            Ok(StatusValue::Cancelled)
+        ));
+    }
+
+    #[test]
+    fn status_value_all_tokens() {
+        for (tok, matches_variant) in [
+            ("TENTATIVE", "Tentative"),
+            ("CONFIRMED", "Confirmed"),
+            ("NEEDS-ACTION", "NeedsAction"),
+            ("COMPLETED", "Completed"),
+            ("IN-PROCESS", "InProcess"),
+            ("DRAFT", "Draft"),
+            ("FINAL", "Final"),
+        ] {
+            let parsed = StatusValue::try_from(tok.as_bytes());
+            assert!(parsed.is_ok(), "{tok} ({matches_variant}) failed to parse");
+        }
+    }
+
+    #[test]
+    fn status_value_rejects_unknown_token() {
+        assert!(StatusValue::try_from(b"BOGUS".as_slice()).is_err());
+    }
 }

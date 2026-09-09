@@ -265,6 +265,28 @@ pub enum ParseError {
     #[error("The local time supplied did not yield a single time instance")]
     AmbiguousLocalTime,
 
+    /// Shared by every value type backed by a `chrono` parser (`DATE`,
+    /// `DATE-TIME`).
     #[error(transparent)]
-    DateTime(#[from] chrono::ParseError),
+    ChronoParse(#[from] chrono::ParseError),
+
+    /// \[[Integer](crate::values::Integer)\] parsing error
+    #[error("Malformed Integer")]
+    Integer(#[from] std::num::ParseIntError),
+
+    /// \[[Float](crate::values::Float)\] parsing error
+    #[error("Malformed Float")]
+    Float(#[from] std::num::ParseFloatError),
+
+    /// \[[UtcOffset](crate::values::UtcOffset)\] parsing error
+    #[error("Malformed UTC offset")]
+    UtcOffset,
+
+    /// \[[Duration](crate::values::Duration)\] parsing error
+    #[error("Malformed Duration")]
+    Duration,
+
+    /// \[[Binary](crate::values::Binary)\] decoding error
+    #[error("Malformed BASE64 data")]
+    Base64(#[from] base64::DecodeError),
 }

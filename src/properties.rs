@@ -34,10 +34,16 @@ use std::fmt::Debug;
 
 #[derive(Debug)]
 /// X Property
-pub struct Xprop(Text);
+pub struct Xprop {
+    value: Text,
+    params: SharedParams,
+}
 #[derive(Debug)]
 /// IANA Propery
-pub struct Iana(Text);
+pub struct Iana {
+    value: Text,
+    params: SharedParams,
+}
 
 use crate::{
     ast::parser::ParseError,

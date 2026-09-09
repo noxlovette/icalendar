@@ -27,6 +27,18 @@ pub struct Uid(String);
 #[derive(Debug)]
 pub struct Pair<T>(T, T);
 
+impl<T> TryFrom<&[u8]> for Pair<T>
+where
+    T: for<'a> TryFrom<&'a [u8], Error = ast::parser::ParseError>,
+{
+    type Error = ast::parser::ParseError;
+
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let (a, b) = ast::split_once(v, b';')?;
+        Ok(Self(a.try_into()?, b.try_into()?))
+    }
+}
+
 /// A property can have attributes with which it is associated.  These
 /// "property parameters" contain meta-information about the property or
 /// the property value.  Property parameters are provided to specify such
@@ -81,5 +93,20 @@ impl Uid {
 impl Default for Uid {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::values::Float;
+
+    #[test]
+    fn pair_parses_geo_example() {
+        let pair =
+            Pair::<Float>::try_from(b"37.386013;-122.082932".as_slice())
+                .unwrap();
+        assert_eq!(*pair.0, 37.386013);
+        assert_eq!(*pair.1, -122.082932);
     }
 }

@@ -2,9 +2,9 @@ use crate::{
     ast::{parser::ParseError, split_once},
     components::todo,
     params::TimeZoneIdentifier,
-    values::datetime::{ICAL_DATETIME_FMT, ICAL_DATETIME_UTC_FMT},
+    values::datetime::{ICAL_DATE_FMT, ICAL_DATETIME_FMT},
 };
-use base64::alphabet::Alphabet;
+use base64::Engine;
 use chrono::{
     DateTime as ChronoDateTime, Duration as ChronoDuration, FixedOffset, Local,
     NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc,
@@ -23,6 +23,19 @@ pub enum DateOrDatetime {
     DateTime(DateTime),
 }
 
+impl TryFrom<&[u8]> for DateOrDatetime {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        // DATE is 8 digits (YYYYMMDD); DATE-TIME always contains the "T"
+        // time designator. The two are unambiguous by shape alone.
+        if v.contains(&b'T') {
+            Ok(Self::DateTime(v.try_into()?))
+        } else {
+            Ok(Self::Date(v.try_into()?))
+        }
+    }
+}
+
 /// Convenience union of [`Date`], [`DateTime`], and [`Period`] used by
 /// properties that accept any of those three value types (e.g., `FREEBUSY`).
 #[derive(Debug)]
@@ -35,6 +48,21 @@ pub enum DateTimePeriod {
     Period(Period),
 }
 
+impl TryFrom<&[u8]> for DateTimePeriod {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        // PERIOD always contains a "/" separator; DATE-TIME contains "T";
+        // DATE is bare digits. Unambiguous by shape alone.
+        if v.contains(&b'/') {
+            Ok(Self::Period(v.try_into()?))
+        } else if v.contains(&b'T') {
+            Ok(Self::DateTime(v.try_into()?))
+        } else {
+            Ok(Self::Date(v.try_into()?))
+        }
+    }
+}
+
 /// Convenience union of [`Duration`] and [`DateTime`] used by properties
 /// that accept either value type (e.g., `TRIGGER`).
 #[derive(Debug)]
@@ -43,6 +71,17 @@ pub enum DateTimeDuration {
     Duration(Duration),
     /// A precise calendar date and time of day.
     DateTime(DateTime),
+}
+
+impl TryFrom<&[u8]> for DateTimeDuration {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        if is_duration_shaped(v) {
+            Ok(Self::Duration(v.try_into()?))
+        } else {
+            Ok(Self::DateTime(v.try_into()?))
+        }
+    }
 }
 
 /// If the property permits, multiple "duration" values are
@@ -76,7 +115,84 @@ pub enum DateTimeDuration {
 /// > P7W
 ///
 /// [Section 3.3.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.6)
-pub type Duration = ChronoDuration;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Duration(ChronoDuration);
+
+impl Deref for Duration {
+    type Target = ChronoDuration;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryFrom<&[u8]> for Duration {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let str = from_utf8(v)?;
+        let (negative, str) = match str.strip_prefix('-') {
+            Some(rest) => (true, rest),
+            None => (false, str.strip_prefix('+').unwrap_or(str)),
+        };
+        let str = str.strip_prefix('P').ok_or(ParseError::Duration)?;
+
+        let total = if let Some(weeks) = str.strip_suffix('W') {
+            ChronoDuration::weeks(
+                weeks.parse().map_err(|_| ParseError::Duration)?,
+            )
+        } else {
+            let (date_part, time_part) = match str.split_once('T') {
+                Some((d, t)) => (d, Some(t)),
+                None => (str, None),
+            };
+
+            let mut total = ChronoDuration::seconds(0);
+            let mut rest = date_part;
+            if let Some(idx) = rest.find('D') {
+                total += ChronoDuration::days(
+                    rest[..idx].parse().map_err(|_| ParseError::Duration)?,
+                );
+                rest = &rest[idx + 1..];
+            }
+            if !rest.is_empty() {
+                return Err(ParseError::Duration);
+            }
+
+            if let Some(mut rest) = time_part {
+                if let Some(idx) = rest.find('H') {
+                    total += ChronoDuration::hours(
+                        rest[..idx]
+                            .parse()
+                            .map_err(|_| ParseError::Duration)?,
+                    );
+                    rest = &rest[idx + 1..];
+                }
+                if let Some(idx) = rest.find('M') {
+                    total += ChronoDuration::minutes(
+                        rest[..idx]
+                            .parse()
+                            .map_err(|_| ParseError::Duration)?,
+                    );
+                    rest = &rest[idx + 1..];
+                }
+                if let Some(idx) = rest.find('S') {
+                    total += ChronoDuration::seconds(
+                        rest[..idx]
+                            .parse()
+                            .map_err(|_| ParseError::Duration)?,
+                    );
+                    rest = &rest[idx + 1..];
+                }
+                if !rest.is_empty() {
+                    return Err(ParseError::Duration);
+                }
+            }
+
+            total
+        };
+
+        Ok(Self(if negative { -total } else { total }))
+    }
+}
 
 /// If the property permits, multiple "DATE-TIME" values
 /// are specified as a COMMA-separated list of values.  No additional
@@ -223,7 +339,24 @@ impl TryFrom<&[u8]> for DateTime {
 /// > 19970714
 ///
 /// [Section 3.3.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.4)
+#[derive(Debug, Clone, Copy)]
 pub struct Date(NaiveDate);
+
+impl Deref for Date {
+    type Target = NaiveDate;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryFrom<&[u8]> for Date {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let str = from_utf8(v)?;
+        Ok(Self(NaiveDate::parse_from_str(str, ICAL_DATE_FMT)?))
+    }
+}
+
 /// The PLUS SIGN character MUST be specified for positive
 /// UTC offsets (i.e., ahead of UTC).  The HYPHEN-MINUS character MUST
 /// be specified for negative UTC offsets (i.e., behind of UTC).  The
@@ -240,7 +373,48 @@ pub struct Date(NaiveDate);
 /// > +0100
 ///
 /// [Section 3.3.14](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.14)
-pub type UtcOffset = FixedOffset;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UtcOffset(FixedOffset);
+
+impl Deref for UtcOffset {
+    type Target = FixedOffset;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryFrom<&[u8]> for UtcOffset {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let str = from_utf8(v)?;
+        let (sign, rest) = match str.as_bytes().first() {
+            Some(b'+') => (1, &str[1..]),
+            Some(b'-') => (-1, &str[1..]),
+            _ => return Err(ParseError::UtcOffset),
+        };
+        if rest.len() != 4 && rest.len() != 6 {
+            return Err(ParseError::UtcOffset);
+        }
+        if !rest.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(ParseError::UtcOffset);
+        }
+        let hour: i32 = rest[0..2].parse().map_err(|_| ParseError::UtcOffset)?;
+        let minute: i32 = rest[2..4].parse().map_err(|_| ParseError::UtcOffset)?;
+        let second: i32 = if rest.len() == 6 {
+            rest[4..6].parse().map_err(|_| ParseError::UtcOffset)?
+        } else {
+            0
+        };
+        let total = sign * (hour * 3600 + minute * 60 + second);
+        // "-0000" and "-000000" are not allowed.
+        if sign == -1 && total == 0 {
+            return Err(ParseError::UtcOffset);
+        }
+        FixedOffset::east_opt(total)
+            .map(Self)
+            .ok_or(ParseError::UtcOffset)
+    }
+}
 
 /// If the property permits, multiple "period" values are
 /// specified by a COMMA-separated list of values.  There are two
@@ -273,6 +447,36 @@ pub enum Period {
         /// Length of the period.
         duration: Duration,
     },
+}
+
+impl TryFrom<&[u8]> for Period {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let (start_b, rest) = split_once(v, b'/')?;
+        let start = DateTime::try_from(start_b)?;
+
+        if is_duration_shaped(rest) {
+            Ok(Self::Duration {
+                start,
+                duration: rest.try_into()?,
+            })
+        } else {
+            Ok(Self::StartEnd {
+                start,
+                end: rest.try_into()?,
+            })
+        }
+    }
+}
+
+/// Whether `v` looks like a `dur-value` (optionally signed, `P`-prefixed)
+/// rather than a `date-time`.
+fn is_duration_shaped(v: &[u8]) -> bool {
+    match v.first() {
+        Some(b'P') => true,
+        Some(b'+') | Some(b'-') => v.get(1) == Some(&b'P'),
+        _ => false,
+    }
 }
 
 /// If the property permits, multiple "time" values are
@@ -388,7 +592,22 @@ pub enum Time {
 /// > AAAAAAAAAAAA
 ///
 /// [Section 3.3.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.1)
-pub type Binary = Alphabet;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Binary(Vec<u8>);
+
+impl Deref for Binary {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryFrom<&[u8]> for Binary {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(base64::engine::general_purpose::STANDARD.decode(v)?))
+    }
+}
 
 /// These values are case-insensitive text.  No additional
 /// content value encoding (i.e., BACKSLASH character encoding, see
@@ -465,12 +684,43 @@ pub struct Uri(Url);
 /// specified, then the value is assumed to be positive.
 ///
 /// [Section 3.3.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.8)
-pub type Integer = i32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Integer(i32);
+
+impl Deref for Integer {
+    type Target = i32;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryFrom<&[u8]> for Integer {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(from_utf8(v)?.parse()?))
+    }
+}
+
 /// If the property permits, multiple "float" values are
 /// specified by a COMMA-separated list of values.
 ///
 /// [Section 3.3.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.7)
-pub type Float = f64;
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Float(f64);
+
+impl Deref for Float {
+    type Target = f64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryFrom<&[u8]> for Float {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(from_utf8(v)?.parse()?))
+    }
+}
 /// The value is a URI as defined by [RFC3986] or any other
 /// IANA-registered form for a URI.  When used to address an Internet
 /// email transport address for a calendar user, the value MUST be a
@@ -488,6 +738,8 @@ pub struct CalendarUserAddress(Uri);
 
 mod recurrence {
     use super::DateOrDatetime;
+    use crate::ast::parser::ParseError;
+    use std::str::from_utf8;
 
     /// Enforces 0 to 60
     #[derive(Debug, Clone)]
@@ -722,6 +974,228 @@ mod recurrence {
         /// Every N years.
         Yearly,
     }
+
+    /// Builds a [`ParseError::Parameter`] for a malformed `RECUR` sub-part.
+    fn recur_err(expected: &str, received: &str) -> ParseError {
+        ParseError::Parameter {
+            expected: expected.into(),
+            received: Some(received.into()),
+        }
+    }
+
+    impl TryFrom<&[u8]> for Frequency {
+        type Error = ParseError;
+        fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+            let r = match v {
+                b"SECONDLY" => Self::Secondly,
+                b"MINUTELY" => Self::Minutely,
+                b"HOURLY" => Self::Hourly,
+                b"DAILY" => Self::Daily,
+                b"WEEKLY" => Self::Weekly,
+                b"MONTHLY" => Self::Monthly,
+                b"YEARLY" => Self::Yearly,
+                x => {
+                    return Err(recur_err(
+                        "FREQ",
+                        from_utf8(x).unwrap_or("<invalid utf8>"),
+                    ));
+                }
+            };
+            Ok(r)
+        }
+    }
+
+    impl TryFrom<&str> for Weekday {
+        type Error = ParseError;
+        fn try_from(s: &str) -> Result<Self, Self::Error> {
+            let r = match s {
+                "SU" => Self::Su,
+                "MO" => Self::Mo,
+                "TU" => Self::Tu,
+                "WE" => Self::We,
+                "TH" => Self::Th,
+                "FR" => Self::Fr,
+                "SA" => Self::Sa,
+                _ => return Err(recur_err("weekday", s)),
+            };
+            Ok(r)
+        }
+    }
+
+    /// Parses a `weekdaynum` (e.g. `"MO"`, `"+1MO"`, `"-1SU"`): an optional
+    /// signed ordinal followed by a two-letter weekday code.
+    fn parse_weekday_num(tok: &str) -> Result<WeekdayNum, ParseError> {
+        if tok.len() < 2 {
+            return Err(recur_err("BYDAY", tok));
+        }
+        let (ord_part, day_part) = tok.split_at(tok.len() - 2);
+        let weekday = Weekday::try_from(day_part)?;
+        let ordinal = if ord_part.is_empty() {
+            None
+        } else {
+            Some(
+                ord_part
+                    .parse::<i8>()
+                    .map_err(|_| recur_err("BYDAY ordinal", ord_part))?,
+            )
+        };
+        Ok(WeekdayNum { ordinal, weekday })
+    }
+
+    /// Parses a bounded integer sub-part shared by the `BYxxx` list rules,
+    /// e.g. `BYSECOND`'s `0 to 60` range. `N` is the tuple struct's inner
+    /// integer type; `S` is the tuple struct itself.
+    fn parse_bounded<N, S>(
+        name: &'static str,
+        tok: &str,
+        min: i32,
+        max: i32,
+        wrap: impl Fn(N) -> S,
+    ) -> Result<S, ParseError>
+    where
+        N: TryFrom<i32>,
+    {
+        let n: i32 = tok.parse().map_err(|_| recur_err(name, tok))?;
+        if n < min || n > max {
+            return Err(recur_err(name, tok));
+        }
+        let n: N = n.try_into().map_err(|_| recur_err(name, tok))?;
+        Ok(wrap(n))
+    }
+
+    impl TryFrom<&str> for Seconds {
+        type Error = ParseError;
+        fn try_from(s: &str) -> Result<Self, Self::Error> {
+            parse_bounded("BYSECOND", s, 0, 60, Self)
+        }
+    }
+    impl TryFrom<&str> for Minutes {
+        type Error = ParseError;
+        fn try_from(s: &str) -> Result<Self, Self::Error> {
+            parse_bounded("BYMINUTE", s, 0, 59, Self)
+        }
+    }
+    impl TryFrom<&str> for Hour {
+        type Error = ParseError;
+        fn try_from(s: &str) -> Result<Self, Self::Error> {
+            parse_bounded("BYHOUR", s, 0, 23, Self)
+        }
+    }
+    impl TryFrom<&str> for WeekNum {
+        type Error = ParseError;
+        fn try_from(s: &str) -> Result<Self, Self::Error> {
+            parse_bounded("BYWEEKNO", s, -53, 53, Self)
+                .and_then(|WeekNum(n)| if n == 0 { Err(recur_err("BYWEEKNO", s)) } else { Ok(WeekNum(n)) })
+        }
+    }
+    impl TryFrom<&str> for MonthNum {
+        type Error = ParseError;
+        fn try_from(s: &str) -> Result<Self, Self::Error> {
+            parse_bounded("BYMONTH", s, 1, 12, Self)
+        }
+    }
+    impl TryFrom<&str> for MonthDayNum {
+        type Error = ParseError;
+        fn try_from(s: &str) -> Result<Self, Self::Error> {
+            parse_bounded("BYMONTHDAY", s, -31, 31, Self)
+                .and_then(|MonthDayNum(n)| if n == 0 { Err(recur_err("BYMONTHDAY", s)) } else { Ok(MonthDayNum(n)) })
+        }
+    }
+    impl TryFrom<&str> for YearDayNum {
+        type Error = ParseError;
+        fn try_from(s: &str) -> Result<Self, Self::Error> {
+            parse_bounded("BYYEARDAY", s, -366, 366, Self)
+                .and_then(|YearDayNum(n)| if n == 0 { Err(recur_err("BYYEARDAY", s)) } else { Ok(YearDayNum(n)) })
+        }
+    }
+
+    /// Parses a COMMA-separated `BYxxx` list into its element type.
+    fn parse_list<T, E>(
+        value: &str,
+        parse_one: impl Fn(&str) -> Result<T, E>,
+    ) -> Result<Vec<T>, E> {
+        value.split(',').map(parse_one).collect()
+    }
+
+    impl TryFrom<&[u8]> for Recur {
+        type Error = ParseError;
+        fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+            let s = from_utf8(v)?;
+            let mut recur = Self::default();
+            let mut freq_seen = false;
+
+            for part in s.split(';') {
+                let (name, value) = part
+                    .split_once('=')
+                    .ok_or_else(|| recur_err("NAME=VALUE", part))?;
+
+                match name.to_ascii_uppercase().as_str() {
+                    "FREQ" => {
+                        recur.freq = value.as_bytes().try_into()?;
+                        freq_seen = true;
+                    }
+                    "UNTIL" => {
+                        recur.until = Some(value.as_bytes().try_into()?);
+                    }
+                    "COUNT" => {
+                        let count: i32 = value.parse()?;
+                        recur.count = Some(count);
+                    }
+                    "INTERVAL" => {
+                        let interval: i32 = value.parse()?;
+                        if interval < 1 {
+                            return Err(recur_err("INTERVAL", value));
+                        }
+                        recur.interval = Some(interval);
+                    }
+                    "BYSECOND" => {
+                        recur.by_second = parse_list(value, |s| Seconds::try_from(s))?;
+                    }
+                    "BYMINUTE" => {
+                        recur.by_minute = parse_list(value, |s| Minutes::try_from(s))?;
+                    }
+                    "BYHOUR" => {
+                        recur.by_hour = parse_list(value, |s| Hour::try_from(s))?;
+                    }
+                    "BYDAY" => {
+                        recur.by_day = parse_list(value, parse_weekday_num)?;
+                    }
+                    "BYMONTHDAY" => {
+                        recur.by_month_day =
+                            parse_list(value, |s| MonthDayNum::try_from(s))?;
+                    }
+                    "BYYEARDAY" => {
+                        recur.by_year_day =
+                            parse_list(value, |s| YearDayNum::try_from(s))?;
+                    }
+                    "BYWEEKNO" => {
+                        recur.by_week_no = parse_list(value, |s| WeekNum::try_from(s))?;
+                    }
+                    "BYMONTH" => {
+                        recur.by_month = parse_list(value, |s| MonthNum::try_from(s))?;
+                    }
+                    "BYSETPOS" => {
+                        recur.by_set_pos =
+                            parse_list(value, |s| YearDayNum::try_from(s))?;
+                    }
+                    "WKST" => {
+                        recur.wkst = Some(Weekday::try_from(value)?);
+                    }
+                    _ => return Err(recur_err("recur-rule-part", name)),
+                }
+            }
+
+            if !freq_seen {
+                return Err(recur_err("FREQ (required)", s));
+            }
+            if recur.until.is_some() && recur.count.is_some() {
+                // UNTIL and COUNT MUST NOT occur in the same recur.
+                return Err(recur_err("UNTIL or COUNT, not both", s));
+            }
+
+            Ok(recur)
+        }
+    }
 }
 
 /// [RFC 4288](https://datatracker.ietf.org/doc/html/rfc4288#section-4.2)
@@ -815,5 +1289,164 @@ impl TryFrom<&[u8]> for Boolean {
         };
 
         Ok(r)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn date_parses_ymd() {
+        let date = Date::try_from(b"19970714".as_slice()).unwrap();
+        assert_eq!(*date, NaiveDate::from_ymd_opt(1997, 7, 14).unwrap());
+    }
+
+    #[test]
+    fn date_rejects_datetime_shape() {
+        assert!(Date::try_from(b"19970714T133000".as_slice()).is_err());
+    }
+
+    #[test]
+    fn date_or_datetime_dispatches_on_t() {
+        assert!(matches!(
+            DateOrDatetime::try_from(b"19970714".as_slice()),
+            Ok(DateOrDatetime::Date(_))
+        ));
+        assert!(matches!(
+            DateOrDatetime::try_from(b"19970714T133000Z".as_slice()),
+            Ok(DateOrDatetime::DateTime(_))
+        ));
+    }
+
+    #[test]
+    fn date_time_period_dispatches_on_shape() {
+        assert!(matches!(
+            DateTimePeriod::try_from(b"19970714".as_slice()),
+            Ok(DateTimePeriod::Date(_))
+        ));
+        assert!(matches!(
+            DateTimePeriod::try_from(b"19970714T133000Z".as_slice()),
+            Ok(DateTimePeriod::DateTime(_))
+        ));
+        assert!(matches!(
+            DateTimePeriod::try_from(
+                b"19970101T180000Z/19970102T070000Z".as_slice()
+            ),
+            Ok(DateTimePeriod::Period(_))
+        ));
+    }
+
+    #[test]
+    fn period_start_end_form() {
+        let period =
+            Period::try_from(b"19970101T180000Z/19970102T070000Z".as_slice())
+                .unwrap();
+        assert!(matches!(period, Period::StartEnd { .. }));
+    }
+
+    #[test]
+    fn period_start_duration_form() {
+        let period =
+            Period::try_from(b"19970308T160000Z/PT8H30M".as_slice()).unwrap();
+        assert!(matches!(period, Period::Duration { .. }));
+    }
+
+    #[test]
+    fn date_time_duration_dispatches_on_leading_p() {
+        assert!(matches!(
+            DateTimeDuration::try_from(b"-PT15M".as_slice()),
+            Ok(DateTimeDuration::Duration(_))
+        ));
+        assert!(matches!(
+            DateTimeDuration::try_from(b"19980101T050000Z".as_slice()),
+            Ok(DateTimeDuration::DateTime(_))
+        ));
+    }
+
+    #[test]
+    fn duration_examples_from_rfc() {
+        let d = Duration::try_from(b"P15DT5H0M20S".as_slice()).unwrap();
+        assert_eq!(
+            *d,
+            ChronoDuration::days(15)
+                + ChronoDuration::hours(5)
+                + ChronoDuration::seconds(20)
+        );
+
+        let d = Duration::try_from(b"P7W".as_slice()).unwrap();
+        assert_eq!(*d, ChronoDuration::weeks(7));
+
+        let d = Duration::try_from(b"-PT15M".as_slice()).unwrap();
+        assert_eq!(*d, -ChronoDuration::minutes(15));
+
+        let d = Duration::try_from(b"PT1H0M0S".as_slice()).unwrap();
+        assert_eq!(*d, ChronoDuration::hours(1));
+    }
+
+    #[test]
+    fn duration_rejects_missing_p() {
+        assert!(Duration::try_from(b"15D".as_slice()).is_err());
+    }
+
+    #[test]
+    fn utc_offset_examples_from_rfc() {
+        let off = UtcOffset::try_from(b"-0500".as_slice()).unwrap();
+        assert_eq!(*off, FixedOffset::west_opt(5 * 3600).unwrap());
+
+        let off = UtcOffset::try_from(b"+0100".as_slice()).unwrap();
+        assert_eq!(*off, FixedOffset::east_opt(3600).unwrap());
+    }
+
+    #[test]
+    fn utc_offset_rejects_negative_zero() {
+        assert!(UtcOffset::try_from(b"-0000".as_slice()).is_err());
+        assert!(UtcOffset::try_from(b"-000000".as_slice()).is_err());
+    }
+
+    #[test]
+    fn integer_and_float_parse() {
+        assert_eq!(*Integer::try_from(b"39".as_slice()).unwrap(), 39);
+        assert_eq!(*Integer::try_from(b"-5".as_slice()).unwrap(), -5);
+        assert_eq!(
+            *Float::try_from(b"37.386013".as_slice()).unwrap(),
+            37.386013
+        );
+    }
+
+    #[test]
+    fn binary_decodes_base64() {
+        let bin = Binary::try_from(b"aGVsbG8=".as_slice()).unwrap();
+        assert_eq!(&*bin, b"hello");
+    }
+
+    #[test]
+    fn recur_requires_freq() {
+        assert!(Recur::try_from(b"BYMONTH=1".as_slice()).is_err());
+    }
+
+    #[test]
+    fn recur_rejects_until_and_count_together() {
+        assert!(
+            Recur::try_from(b"FREQ=DAILY;COUNT=5;UNTIL=19971224T000000Z".as_slice())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn recur_parses_freq_and_bymonth() {
+        assert!(Recur::try_from(b"FREQ=YEARLY;BYMONTH=1".as_slice()).is_ok());
+    }
+
+    #[test]
+    fn recur_parses_byday_with_ordinal() {
+        assert!(
+            Recur::try_from(b"FREQ=MONTHLY;BYDAY=-1MO".as_slice()).is_ok()
+        );
+    }
+
+    #[test]
+    fn recur_rejects_out_of_range_bysecond() {
+        assert!(Recur::try_from(b"FREQ=SECONDLY;BYSECOND=61".as_slice()).is_err());
     }
 }

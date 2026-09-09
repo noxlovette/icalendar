@@ -1,4 +1,5 @@
 use crate::{
+    ast::parser::ParseError,
     params::{AlarmTriggerRelationship, TimeZoneIdentifier, ValueDataType},
     properties::SharedParams,
     values::{DateTimeDuration, Integer, Text},
@@ -30,6 +31,25 @@ pub enum ActionEnum {
     Iana(Text),
     /// A non-standard `X-` prefixed action.
     XName(Text),
+}
+
+impl TryFrom<&[u8]> for ActionEnum {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let r = match v {
+            b"AUDIO" => Self::Audio,
+            b"DISPLAY" => Self::Display,
+            b"EMAIL" => Self::Email,
+            x => {
+                if x.to_ascii_uppercase().starts_with(b"X-") {
+                    Self::XName(x.try_into()?)
+                } else {
+                    Self::Iana(x.try_into()?)
+                }
+            }
+        };
+        Ok(r)
+    }
 }
 
 /// This property defines the number of times the alarm should be repeated,
@@ -67,4 +87,37 @@ struct TriggerParams {
     value_data_type: Option<ValueDataType>,
     tz_identifier: Option<TimeZoneIdentifier>,
     trigger_relationship: Option<AlarmTriggerRelationship>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn action_fixed_tokens() {
+        assert!(matches!(
+            ActionEnum::try_from(b"AUDIO".as_slice()),
+            Ok(ActionEnum::Audio)
+        ));
+        assert!(matches!(
+            ActionEnum::try_from(b"DISPLAY".as_slice()),
+            Ok(ActionEnum::Display)
+        ));
+        assert!(matches!(
+            ActionEnum::try_from(b"EMAIL".as_slice()),
+            Ok(ActionEnum::Email)
+        ));
+    }
+
+    #[test]
+    fn action_x_name_and_iana() {
+        assert!(matches!(
+            ActionEnum::try_from(b"X-CUSTOM".as_slice()),
+            Ok(ActionEnum::XName(_))
+        ));
+        assert!(matches!(
+            ActionEnum::try_from(b"PROCEDURE".as_slice()),
+            Ok(ActionEnum::Iana(_))
+        ));
+    }
 }
