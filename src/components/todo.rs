@@ -45,6 +45,7 @@ use crate::properties::{
 /// >
 ///
 /// [Section 3.6.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6.2)
+#[derive(Debug)]
 pub struct Todo {
     dtstamp: DateTimeStamp,
     uid: Uid,

@@ -80,6 +80,7 @@ use crate::properties::{
 /// >
 ///
 /// [Section 3.6.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6.4)
+#[derive(Debug)]
 pub struct FreeBusy {
     dtstamp: DateTimeStamp,
     uid: Uid,

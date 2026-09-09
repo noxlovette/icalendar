@@ -17,13 +17,14 @@ use crate::{
 /// > PARTSTAT=ACCEPTED;CN=Jane Doe:mailto:jdoe@example.com
 ///
 /// [Section 3.8.4.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.1)
+#[derive(Debug)]
 pub struct Attendee {
     value: CalendarUserAddress,
     params: AttendeeParams,
 }
 
 /// Parameter bundle for [`Attendee`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct AttendeeParams {
     shared: SharedParams,
     language: Option<Language>,
@@ -46,6 +47,7 @@ struct AttendeeParams {
 /// > CONTACT:Jim Dolittle\, ABC Industries\, +1-919-555-1234
 ///
 /// [Section 3.8.4.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.2)
+#[derive(Debug)]
 pub struct Contact {
     value: Text,
     params: AltrepLanguageParams,
@@ -58,13 +60,14 @@ pub struct Contact {
 /// > ORGANIZER;CN=John Smith:mailto:jsmith@example.com
 ///
 /// [Section 3.8.4.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.3)
+#[derive(Debug)]
 pub struct Organizer {
     value: CalendarUserAddress,
     params: OrgParams,
 }
 
 /// Parameter bundle for [`Organizer`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct OrgParams {
     shared: SharedParams,
     language: Option<Language>,
@@ -82,13 +85,14 @@ pub struct OrgParams {
 /// > RECURRENCE-ID;VALUE=DATE:19960401
 ///
 /// [Section 3.8.4.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.4)
+#[derive(Debug)]
 pub struct RecurrenceId {
     value: DateOrDatetime,
     params: RecurrenceParams,
 }
 
 /// Parameter bundle for [`RecurrenceId`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct RecurrenceParams {
     shared: SharedParams,
     data_type: Option<ValueDataType>,
@@ -105,13 +109,14 @@ struct RecurrenceParams {
 /// > RELATED-TO:jsmith.part7.19960817T083000.xyzMail@example.com
 ///
 /// [Section 3.8.4.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.5)
+#[derive(Debug)]
 pub struct RelatedTo {
     value: Uid,
     params: RelatedToParams,
 }
 
 /// Parameter bundle for [`RelatedTo`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct RelatedToParams {
     shared: SharedParams,
     rt: Option<RelationshipType>,
@@ -125,6 +130,7 @@ struct RelatedToParams {
 /// > URL:http://example.com/pub/busy/jpublic-01.ifb
 ///
 /// [Section 3.8.4.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.6)
+#[derive(Debug)]
 pub struct UniformResourceLocator {
     value: Uri,
     params: SharedParams,
@@ -143,6 +149,7 @@ pub struct UniformResourceLocator {
 /// > UID:19960401T080045Z-4000F192713-0052@example.com
 ///
 /// [Section 3.8.4.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.4.7)
+#[derive(Debug)]
 pub struct Uid {
     value: Text,
     params: SharedParams,

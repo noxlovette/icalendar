@@ -19,6 +19,7 @@ pub type Email = String;
 /// Typically generated from the current timestamp and a random suffix so it is
 /// unique across calendar stores.  See [`Uid::new`] for the canonical
 /// constructor.
+#[derive(Debug)]
 pub struct Uid(String);
 
 /// A pair of two values of the same type, used for properties such as [`Geo`]

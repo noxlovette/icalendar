@@ -81,29 +81,6 @@ pub struct Version {
     params: SharedParams,
 }
 
-macro_rules! impl_try_from_bytes {
-    ($ty:ident) => {
-        impl_try_from_bytes!($ty, Text);
-    };
-    ($ty:ident, $value_ty:ty) => {
-        impl TryFrom<&[u8]> for $ty {
-            type Error = ParseError;
-            fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
-                if let Some(param_start) = memchr(b';', v) {
-                    let value = <$value_ty>::try_from(&v[0..param_start])?;
-                    let params = SharedParams::try_from(&v[param_start..])?;
-                    Ok(Self { value, params })
-                } else {
-                    Ok(Self {
-                        value: v.try_into()?,
-                        params: SharedParams::default(),
-                    })
-                }
-            }
-        }
-    };
-}
-
 impl_try_from_bytes!(ProductIdentifier);
 impl_try_from_bytes!(Version);
 impl_try_from_bytes!(Method);

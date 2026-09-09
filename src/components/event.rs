@@ -140,6 +140,7 @@ use crate::properties::{
 /// >
 ///
 /// [Section 3.6.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6.1)
+#[derive(Debug)]
 pub struct Event {
     dtstamp: DateTimeStamp,
     uid: Uid,

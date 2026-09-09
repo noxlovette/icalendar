@@ -12,6 +12,7 @@ use crate::{
 /// > TZID:America/New_York
 ///
 /// [Section 3.8.3.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.3.1)
+#[derive(Debug)]
 pub struct TimeZoneIdentifier {
     value: Text,
     params: SharedParams,
@@ -25,11 +26,13 @@ pub struct TimeZoneIdentifier {
 /// > TZNAME:EST
 ///
 /// [Section 3.8.3.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.3.2)
+#[derive(Debug)]
 pub struct TimeZoneName {
     value: Text,
     params: TZNameParams,
 }
 
+#[derive(Debug)]
 struct TZNameParams {
     shared: SharedParams,
     language: Language,
@@ -43,6 +46,7 @@ struct TZNameParams {
 /// > TZOFFSETFROM:-0500
 ///
 /// [Section 3.8.3.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.3.3)
+#[derive(Debug)]
 pub struct TimeZoneOffsetFrom {
     value: UtcOffset,
     params: SharedParams,
@@ -56,6 +60,7 @@ pub struct TimeZoneOffsetFrom {
 /// > TZOFFSETTO:-0400
 ///
 /// [Section 3.8.3.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.3.4)
+#[derive(Debug)]
 pub struct TimeZoneOffsetTo {
     value: UtcOffset,
     params: SharedParams,
@@ -70,6 +75,7 @@ pub struct TimeZoneOffsetTo {
 /// > TZURL:http://timezones.example.org/tz/America-Los_Angeles.ics
 ///
 /// [Section 3.8.3.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.3.5)
+#[derive(Debug)]
 pub struct TimeZoneUrl {
     value: Uri,
     params: SharedParams,

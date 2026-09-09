@@ -20,11 +20,13 @@ use crate::{
 /// "application/octet-stream".
 ///
 /// [Section 3.8.1.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.1)
+#[derive(Debug)]
 pub struct Attachment {
     value: AttachmentValue,
     params: AttachmentParams,
 }
 
+#[derive(Debug)]
 enum AttachmentValue {
     Uri,
     Binary,
@@ -49,11 +51,13 @@ struct AttachmentParams {
 /// > CATEGORIES:APPOINTMENT,EDUCATION
 ///
 /// [Section 3.8.1.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.2)
+#[derive(Debug)]
 pub struct Categories {
     value: Vec<Text>,
     params: CategoriesParams,
 }
 
+#[derive(Debug)]
 struct CategoriesParams {
     shared: SharedParams,
     language: Option<Language>,
@@ -83,11 +87,13 @@ struct CategoriesParams {
 /// > CLASS:PUBLIC
 ///
 /// [Section 3.8.1.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.3)
+#[derive(Debug)]
 pub struct Classification {
     value: ClassificationEnum,
     params: SharedParams,
 }
 
+#[derive(Debug)]
 enum ClassificationEnum {
     Public,
     Private,
@@ -103,6 +109,7 @@ enum ClassificationEnum {
 /// > president of the division.
 ///
 /// [Section 3.8.1.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.4)
+#[derive(Debug)]
 pub struct Comment {
     value: Text,
     params: AltrepLanguageParams,
@@ -119,6 +126,7 @@ pub struct Comment {
 /// text for an EMAIL category of alarm.
 ///
 /// [Section 3.8.1.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.5)
+#[derive(Debug)]
 pub struct Description {
     value: Text,
     params: AltrepLanguageParams,
@@ -141,6 +149,7 @@ pub struct Description {
 /// > GEO:37.386013;-122.082932
 ///
 /// [Section 3.8.1.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.6)
+#[derive(Debug)]
 pub struct Geo {
     value: Pair<Float>,
     params: SharedParams,
@@ -159,6 +168,7 @@ pub struct Geo {
 /// > LOCATION:Conference Room - F123\, Bldg. 002
 ///
 /// [Section 3.8.1.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.7)
+#[derive(Debug)]
 pub struct Location {
     value: Text,
     params: AltrepLanguageParams,
@@ -178,6 +188,7 @@ pub struct Location {
 /// > PERCENT-COMPLETE:39
 ///
 /// [Section 3.8.1.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.8)
+#[derive(Debug)]
 pub struct PercentComplete {
     value: Integer,
     params: SharedParams,
@@ -203,6 +214,7 @@ pub struct PercentComplete {
 /// > PRIORITY:1
 ///
 /// [Section 3.8.1.9](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.9)
+#[derive(Debug)]
 pub struct Priority {
     value: Integer,
     params: SharedParams,
@@ -216,6 +228,7 @@ pub struct Priority {
 /// > RESOURCES:EASEL,PROJECTOR,VCR
 ///
 /// [Section 3.8.1.10](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.10)
+#[derive(Debug)]
 pub struct Resources {
     value: Text,
     params: AltrepLanguageParams,
@@ -236,11 +249,13 @@ pub struct Resources {
 /// > STATUS:TENTATIVE
 ///
 /// [Section 3.8.1.11](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.11)
+#[derive(Debug)]
 pub struct Status {
     value: StatusValue,
     params: SharedParams,
 }
 
+#[derive(Debug)]
 enum StatusValue {
     Event(EventStatus),
     Todo(TodoStatus),
@@ -248,6 +263,7 @@ enum StatusValue {
 }
 
 /// Status values for a `VEVENT` component.
+#[derive(Debug)]
 pub enum EventStatus {
     /// Event is tentatively scheduled.
     Tentative,
@@ -258,6 +274,7 @@ pub enum EventStatus {
 }
 
 /// Status values for a `VTODO` component.
+#[derive(Debug)]
 pub enum TodoStatus {
     /// To-do has not yet been started.
     NeedsAction,
@@ -270,6 +287,7 @@ pub enum TodoStatus {
 }
 
 /// Status values for a `VJOURNAL` component.
+#[derive(Debug)]
 pub enum JourStatus {
     /// Journal entry is a draft.
     Draft,
@@ -291,6 +309,7 @@ pub enum JourStatus {
 /// > SUMMARY:Department Party
 ///
 /// [Section 3.8.1.12](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.1.12)
+#[derive(Debug)]
 pub struct Summary {
     value: Text,
     params: AltrepLanguageParams,

@@ -84,6 +84,7 @@ use crate::properties::{
 /// >
 ///
 /// [Section 3.6.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6.5)
+#[derive(Debug)]
 pub struct Timezone {
     tzid: TimeZoneIdentifier,
     last_mod: Option<LastModified>,
@@ -94,6 +95,7 @@ pub struct Timezone {
     iana: Iana,
 }
 
+#[derive(Debug)]
 struct TzProp {
     dtstart: DateTimeStart,
     tz_offset_to: TimeZoneOffsetTo,

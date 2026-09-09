@@ -5,6 +5,7 @@ use crate::{
 };
 
 /// These params are shared by this module's component properties
+#[derive(Debug)]
 struct DateTimeParams {
     shared: SharedParams,
     value_data_type: Option<ValueDataType>,
@@ -19,6 +20,7 @@ struct DateTimeParams {
 /// > COMPLETED:19960401T150000Z
 ///
 /// [Section 3.8.2.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.1)
+#[derive(Debug)]
 pub struct Completed {
     value: DateTime,
     params: SharedParams,
@@ -33,6 +35,7 @@ pub struct Completed {
 /// > DTEND;VALUE=DATE:19980704
 ///
 /// [Section 3.8.2.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.2)
+#[derive(Debug)]
 pub struct DateTimeEnd {
     value: DateOrDatetime,
     params: DateTimeParams,
@@ -46,6 +49,7 @@ pub struct DateTimeEnd {
 /// > DUE:19980430T000000Z
 ///
 /// [Section 3.8.2.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.3)
+#[derive(Debug)]
 pub struct DateTimeDue {
     value: DateOrDatetime,
     params: DateTimeParams,
@@ -58,6 +62,7 @@ pub struct DateTimeDue {
 /// > DTSTART:19980118T073000Z
 ///
 /// [Section 3.8.2.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.4)
+#[derive(Debug)]
 pub struct DateTimeStart {
     value: DateOrDatetime,
     params: DateTimeParams,
@@ -70,6 +75,7 @@ pub struct DateTimeStart {
 /// > DURATION:PT1H0M0S
 ///
 /// [Section 3.8.2.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.5)
+#[derive(Debug)]
 pub struct Duration {
     value: DurationV,
     params: SharedParams,
@@ -82,11 +88,13 @@ pub struct Duration {
 /// > FREEBUSY;FBTYPE=BUSY-UNAVAILABLE:19970308T160000Z/PT8H30M
 ///
 /// [Section 3.8.2.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.6)
+#[derive(Debug)]
 pub struct FreeBusyTime {
     value: Period,
     params: FreeBusyTimeParams,
 }
 
+#[derive(Debug)]
 struct FreeBusyTimeParams {
     shared: SharedParams,
     fb_time_type: Fbtype,
@@ -100,6 +108,7 @@ struct FreeBusyTimeParams {
 /// > TRANSP:TRANSPARENT
 ///
 /// [Section 3.8.2.7](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.2.7)
+#[derive(Debug)]
 pub struct TimeTransparency {
     value: TranspValue,
     params: SharedParams,

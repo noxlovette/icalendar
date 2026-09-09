@@ -55,6 +55,7 @@ use crate::properties::{
 /// >
 ///
 /// [Section 3.6.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6.3)
+#[derive(Debug)]
 pub struct Journal {
     dtstamp: DateTimeStamp,
     uid: Uid,

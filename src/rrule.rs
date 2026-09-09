@@ -4,6 +4,7 @@ use thiserror::Error;
 use crate::params::{Range, Recur};
 
 /// Convenience wrapper for recurrence rules
+#[derive(Debug)]
 pub struct RecurrenceSet {
     /// Purpose: This property is used in conjunction with the "UID" and
     /// "SEQUENCE" properties to identify a specific instance of a

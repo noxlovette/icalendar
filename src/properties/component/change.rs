@@ -11,10 +11,13 @@ use crate::{
 /// > CREATED:19960329T133000Z
 ///
 /// [Section 3.8.7.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.1)
+#[derive(Debug)]
 pub struct DateTimeCreated {
     value: DateTime,
     params: SharedParams,
 }
+
+impl_try_from_bytes!(DateTimeCreated, DateTime);
 
 /// This property specifies the date and time that the instance of the iCalendar
 /// object was created (when `METHOD` is present), or the date and time that the
@@ -26,6 +29,7 @@ pub struct DateTimeCreated {
 /// > DTSTAMP:19971210T080000Z
 ///
 /// [Section 3.8.7.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.2)
+#[derive(Debug)]
 pub struct DateTimeStamp {
     value: DateTime,
     params: SharedParams,
@@ -39,6 +43,7 @@ pub struct DateTimeStamp {
 /// > LAST-MODIFIED:19960817T133000Z
 ///
 /// [Section 3.8.7.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.3)
+#[derive(Debug)]
 pub struct LastModified {
     value: DateTime,
     params: SharedParams,
@@ -52,6 +57,7 @@ pub struct LastModified {
 /// > SEQUENCE:0
 ///
 /// [Section 3.8.7.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.7.4)
+#[derive(Debug)]
 pub struct Sequence {
     value: Integer,
     params: SharedParams,

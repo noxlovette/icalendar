@@ -12,6 +12,7 @@ use crate::{
 /// > EXDATE:19960402T010000Z,19960403T010000Z,19960404T010000Z
 ///
 /// [Section 3.8.5.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.5.1)
+#[derive(Debug)]
 pub struct ExceptionDateTimes {
     value: Vec<DateOrDatetime>,
     params: ExDateParams,
@@ -25,6 +26,7 @@ pub struct ExceptionDateTimes {
 /// > RDATE;TZID=America/New_York:19970714T083000
 ///
 /// [Section 3.8.5.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.5.2)
+#[derive(Debug)]
 pub struct RecurrenceDateTimes {
     value: Vec<DateTimePeriod>,
     params: RDateParams,
@@ -38,13 +40,14 @@ pub struct RecurrenceDateTimes {
 /// > RRULE:FREQ=DAILY;COUNT=10
 ///
 /// [Section 3.8.5.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.5.3)
+#[derive(Debug)]
 pub struct RRule {
     value: Recur,
     params: SharedParams,
 }
 
 /// Parameter bundle for [`ExceptionDateTimes`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct ExDateParams {
     shared: SharedParams,
     data_type: Option<ValueDataType>,
@@ -52,7 +55,7 @@ struct ExDateParams {
 }
 
 /// Parameter bundle for [`RecurrenceDateTimes`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct RDateParams {
     shared: SharedParams,
     data_type: Option<ValueDataType>,

@@ -1,5 +1,3 @@
-use std::clone;
-
 /// Every lexical token produced by scanning an iCalendar content stream.
 ///
 /// Structural/generic tokens cover the contentline grammar itself

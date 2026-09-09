@@ -1,9 +1,9 @@
 use super::token::Token;
 use crate::{
     Calendar,
-    ast::token::TokenType::{self, *},
-    properties::{
-        CalendarScale, Iana, Method, ProductIdentifier, Version, Xprop,
+    ast::{
+        CalendarBuilder, Component, EventBuilder, FreeBusyBuilder,
+        JournalBuilder, TodoBuilder, token::TokenType,
     },
 };
 use TokenType::*;
@@ -17,34 +17,6 @@ pub struct Parser {
     calendar: CalendarBuilder,
     current: usize,
     depth: Depth,
-}
-
-#[derive(Default, Debug)]
-struct CalendarBuilder {
-    prodid: Option<ProductIdentifier>,
-    version: Option<Version>,
-    calscale: Option<CalendarScale>,
-    method: Option<Method>,
-    xprop: Vec<Xprop>,
-    iana: Vec<Iana>,
-    components: Vec<ComponentBuilder>,
-}
-
-impl CalendarBuilder {
-    /// creates a new cal builder
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn build(self) -> Result<Calendar, CalendarError> {
-        todo!()
-    }
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum CalendarError {
-    #[error("Missing field: {0}")]
-    MissingField(&'static str),
 }
 
 #[derive(Debug)]
@@ -73,7 +45,7 @@ impl Depth {
     }
 }
 
-impl Parser {
+impl<'a> Parser {
     /// creates a new parser
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
@@ -101,32 +73,54 @@ impl Parser {
 
     fn calendar(&mut self) -> ParseResult<Calendar> {
         let mut cal = CalendarBuilder::new();
-        match self.property()? {
-            ProdId => {
-                cal.prodid = Some(self.next()?.lexeme().try_into()?);
-            }
-            Version => {
-                cal.version = Some(self.next()?.lexeme().try_into()?);
-            }
-            Method => {
-                cal.method = Some(self.next()?.lexeme().try_into()?);
-            }
-            CalScale => {
-                cal.calscale = Some(self.next()?.lexeme().try_into()?);
-            }
-            _ => {} // TODO: check for x and iana
-        }
 
-        // done processing the calendar, going one way deeper
-        self.depth.increase();
-        let components = self.component();
+        // while we are not at the beginning of the first component
+        while !self.check(Begin)? {
+            match self.property()? {
+                ProdId => {
+                    cal.prodid = Some(self.next()?.lexeme().try_into()?);
+                }
+                Version => {
+                    cal.version = Some(self.next()?.lexeme().try_into()?);
+                }
+                Method => {
+                    cal.method = Some(self.next()?.lexeme().try_into()?);
+                }
+                CalScale => {
+                    cal.calscale = Some(self.next()?.lexeme().try_into()?);
+                }
+                _ => {} // TODO: check for x and iana
+            }
+
+            self.consume(Crlf, "expected crlf after property")?;
+        }
+        let mut components = self.component()?;
+
+        todo!("extend");
+
+        // bigger
+        self.consume(End, "expected the calendar to have an END")?;
 
         Ok(cal.build()?)
     }
 
-    fn component(&mut self) -> ParseResult<()> {
+    /// recursive function that returns a vec of components for a calendar
+    fn component(&mut self) -> ParseResult<Vec<Component>> {
+        self.consume(Begin, "Expected component to begin with BEGIN")?;
+        self.consume(Colon, "expected : after BEGIN clause")?;
+        let c: Component = match self.next()?.token_type() {
+            VEvent => EventBuilder::new().into(),
+            VTodo => TodoBuilder::new().into(),
+            VJournal => JournalBuilder::new().into(),
+            VFreeBusy => FreeBusyBuilder::new().into(),
+            _ => return Err(ParseError::UnknownComponent),
+        };
+        self.consume(Crlf, "expected crlf after BEGIN")?;
+        // recursive call to property
         todo!()
     }
+
+    fn property(&mut self) -> ParseResult<Vec<P>> {}
 
     /// checks if the next token corresponds to one of passed token types
     ///
@@ -200,8 +194,7 @@ impl Parser {
 
     /// shorthand for advance, consume colon, return what the token was
     fn property(&mut self) -> ParseResult<TokenType> {
-        let tt = self.peek()?.token_type();
-        self.next()?;
+        let tt = self.next()?.token_type();
         self.consume(Colon, "Expected :")?;
 
         Ok(tt)
@@ -222,6 +215,9 @@ pub enum ParseError {
         /// What we actually received
         received: Option<String>,
     },
+
+    #[error("unknown component")]
+    UnknownComponent,
 
     /// URL parsing error
     #[error("Incorrect URL: {0}")]
@@ -265,4 +261,10 @@ pub enum ParseError {
 
     #[error(transparent)]
     Calendar(#[from] CalendarError),
+
+    #[error("The local time supplied did not yield a single time instance")]
+    AmbiguousLocalTime,
+
+    #[error(transparent)]
+    DateTime(#[from] chrono::ParseError),
 }

@@ -1,16 +1,19 @@
 use crate::{
     ast::{parser::ParseError, split_once},
+    components::todo,
     params::TimeZoneIdentifier,
+    values::datetime::{ICAL_DATETIME_FMT, ICAL_DATETIME_UTC_FMT},
 };
 use base64::alphabet::Alphabet;
 use chrono::{
-    DateTime as ChronoDateTime, Duration as ChronoDuration, FixedOffset,
-    NaiveDate, NaiveTime, Utc,
+    DateTime as ChronoDateTime, Duration as ChronoDuration, FixedOffset, Local,
+    NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc,
 };
+use chrono_tz::Tz;
 pub use recurrence::Recur;
-use std::ops::Deref;
+use std::{ops::Deref, str::from_utf8};
 use url::Url;
-
+pub mod datetime;
 /// The RFC 5545's helper
 #[derive(Debug, Clone)]
 pub enum DateOrDatetime {
@@ -22,6 +25,7 @@ pub enum DateOrDatetime {
 
 /// Convenience union of [`Date`], [`DateTime`], and [`Period`] used by
 /// properties that accept any of those three value types (e.g., `FREEBUSY`).
+#[derive(Debug)]
 pub enum DateTimePeriod {
     /// A calendar date without a time component.
     Date(Date),
@@ -33,6 +37,7 @@ pub enum DateTimePeriod {
 
 /// Convenience union of [`Duration`] and [`DateTime`] used by properties
 /// that accept either value type (e.g., `TRIGGER`).
+#[derive(Debug)]
 pub enum DateTimeDuration {
     /// A positive span of time.
     Duration(Duration),
@@ -171,23 +176,38 @@ pub type Duration = ChronoDuration;
 ///
 /// > DTSTART:19970714T133000                   ; Local time
 /// > DTSTART:19970714T173000Z                  ; UTC time
-/// > DTSTART;TZID=America/New_York:19970714T133000 ; Local time and time ; zone
+/// > DTSTART;TZID=America/New_York:19970714T133000 ; Local date and time ; zone
 /// > reference
 ///
 /// [Section 3.3.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.5)
-#[derive(Debug, Clone)]
-pub enum DateTime {
-    /// Local (floating) time — not bound to any time zone.
-    Floating(NaiveDate),
-    /// Absolute UTC time, identified by the `Z` suffix.
-    Utc(ChronoDateTime<Utc>),
-    /// Local time anchored to a specific time zone via a TZID reference.
-    Timezone {
-        /// The local date.
-        dt: Date,
-        /// The VTIMEZONE identifier that gives the offset context.
-        tzid: TimeZoneIdentifier,
-    },
+#[derive(Debug, Clone, Copy)]
+pub struct DateTime(ChronoDateTime<Utc>);
+
+impl Deref for DateTime {
+    type Target = ChronoDateTime<Utc>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryFrom<&[u8]> for DateTime {
+    type Error = ParseError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let str = from_utf8(v)?;
+        if let Some(stripped) = str.strip_suffix('Z') {
+            let naive =
+                NaiveDateTime::parse_from_str(stripped, ICAL_DATETIME_FMT)?;
+            return Ok(Self(Utc.from_utc_datetime(&naive)));
+        }
+
+        let naive = NaiveDateTime::parse_from_str(str, ICAL_DATETIME_FMT)?;
+        let local = naive
+            .and_local_timezone(Local)
+            .single()
+            .ok_or(ParseError::AmbiguousLocalTime)?;
+
+        Ok(Self(local.to_utc()))
+    }
 }
 
 /// If the property permits, multiple "date" values are
@@ -203,7 +223,7 @@ pub enum DateTime {
 /// > 19970714
 ///
 /// [Section 3.3.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.4)
-pub type Date = NaiveDate;
+pub struct Date(NaiveDate);
 /// The PLUS SIGN character MUST be specified for positive
 /// UTC offsets (i.e., ahead of UTC).  The HYPHEN-MINUS character MUST
 /// be specified for negative UTC offsets (i.e., behind of UTC).  The
@@ -336,6 +356,7 @@ pub enum Period {
 /// > TZID=America/New_York:083000
 ///
 /// [Section 3.3.12](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.12)
+#[derive(Debug)]
 pub enum Time {
     /// Local (floating) time — not bound to any time zone.
     Floating(NaiveTime),
@@ -375,6 +396,7 @@ pub type Binary = Alphabet;
 /// is defined for this value type.
 ///
 /// [Section 3.3.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.2)
+#[derive(Debug)]
 pub struct Boolean(bool);
 
 /// If the property permits, multiple TEXT values are
@@ -461,6 +483,7 @@ pub type Float = f64;
 /// > mailto:jane_doe@example.com
 ///
 /// [Section 3.3.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.3)
+#[derive(Debug)]
 pub struct CalendarUserAddress(Uri);
 
 mod recurrence {
@@ -479,6 +502,7 @@ mod recurrence {
     struct WeekNum(i8);
 
     /// 1 to 53, Ordinal of the week
+    #[derive(Debug)]
     struct OrdWk(u8);
     #[derive(Debug, Clone)]
     struct WeekdayNum {
@@ -489,10 +513,12 @@ mod recurrence {
     #[derive(Debug, Clone)]
     struct MonthNum(u8);
     /// 1 to 31, Ordinal of month day
+    #[derive(Debug)]
     struct OrdMoDay(u8);
     #[derive(Debug, Clone)]
     struct MonthDayNum(i8);
     /// 1 to 366
+    #[derive(Debug)]
     struct OrdYrDay(u16);
     #[derive(Debug, Clone)]
     struct YearDayNum(i16);

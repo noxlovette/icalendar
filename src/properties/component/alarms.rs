@@ -11,12 +11,14 @@ use crate::{
 /// > ACTION:AUDIO
 ///
 /// [Section 3.8.6.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.6.1)
+#[derive(Debug)]
 pub struct Action {
     value: ActionEnum,
     params: SharedParams,
 }
 
 /// Possible alarm actions for [`Action`].
+#[derive(Debug)]
 pub enum ActionEnum {
     /// Play an audio clip.
     Audio,
@@ -38,6 +40,7 @@ pub enum ActionEnum {
 /// > REPEAT:4
 ///
 /// [Section 3.8.6.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.6.2)
+#[derive(Debug)]
 pub struct Repeat {
     value: Integer,
     params: SharedParams,
@@ -52,11 +55,13 @@ pub struct Repeat {
 /// > TRIGGER;RELATED=END:PT5M
 ///
 /// [Section 3.8.6.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.6.3)
+#[derive(Debug)]
 pub struct Trigger {
     value: DateTimeDuration,
     params: TriggerParams,
 }
 
+#[derive(Debug)]
 struct TriggerParams {
     shared: SharedParams,
     value_data_type: Option<ValueDataType>,

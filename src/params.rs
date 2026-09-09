@@ -101,6 +101,7 @@ impl TryFrom<&[u8]> for ValueDataType {
 /// > commonly used by current implementations.
 ///
 /// [Section 3.2.1](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.1)
+#[derive(Debug)]
 pub struct Altrep(Uri);
 
 impl TryFrom<&[u8]> for Altrep {
@@ -123,6 +124,7 @@ impl TryFrom<&[u8]> for Altrep {
 /// > ORGANIZER;CN="John Smith":mailto:jsmith@example.com
 ///
 /// [Section 3.2.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.2)
+#[derive(Debug)]
 pub struct CommonName(Text);
 
 impl TryFrom<&[u8]> for CommonName {
@@ -146,6 +148,7 @@ impl TryFrom<&[u8]> for CommonName {
 /// > com
 ///
 /// [Section 3.2.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.4)
+#[derive(Debug)]
 pub struct Delegators(Vec<CalendarUserAddress>);
 
 impl TryFrom<&[u8]> for Delegators {
@@ -172,6 +175,7 @@ impl TryFrom<&[u8]> for Delegators {
 /// > @example.com":mailto:jsmith@example.com
 ///
 /// [Section 3.2.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.5)
+#[derive(Debug)]
 pub struct Delegatees(Vec<CalendarUserAddress>);
 
 impl TryFrom<&[u8]> for Delegatees {
@@ -340,6 +344,7 @@ impl TryFrom<&[u8]> for Fbtype {
 /// > LOCATION;LANGUAGE=no:Tyskland
 ///
 /// [Section 3.2.10](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.10)
+#[derive(Debug)]
 pub struct Language(langtag::LangTagBuf);
 
 impl TryFrom<&[u8]> for Language {
@@ -362,6 +367,7 @@ impl TryFrom<&[u8]> for Language {
 /// parameter values MUST each be specified in a quoted-string.
 ///
 /// [Section 3.2.11](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.11)
+#[derive(Debug)]
 pub struct Member(Vec<CalendarUserAddress>);
 
 impl TryFrom<&[u8]> for Member {
@@ -464,6 +470,7 @@ impl TryFrom<&[u8]> for ParticipationStatus {
 /// > ATTENDEE;RSVP=TRUE:mailto:jsmith@example.com
 ///
 /// [Section 3.2.17](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.17)
+#[derive(Debug)]
 pub struct Rsvp(Boolean);
 
 /// This parameter can be specified on properties with a
@@ -474,6 +481,7 @@ pub struct Rsvp(Boolean);
 /// each be specified in a quoted-string.
 ///
 /// [Section 3.2.18](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.18)
+#[derive(Debug)]
 pub struct SentBy(CalendarUserAddress);
 
 /// This parameter MUST be specified on the "DTSTART",
@@ -682,6 +690,7 @@ pub enum AlarmTriggerRelationship {
 /// > RECURRENCE-ID;RANGE=THISANDFUTURE:19980401T133000Z
 ///
 /// [Section 3.2.13](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2.13)
+#[derive(Debug)]
 pub enum RecurrenceIdentifierRange {
     /// Range covers the identified instance and all subsequent instances.
     ThisAndFuture,
@@ -900,6 +909,7 @@ pub type Params = Vec<PropertyParams>;
 /// > DTSTART;TZID=America/New_York;VALUE=DATE-TIME:19980119T020000
 ///
 /// [Section 3.2](https://datatracker.ietf.org/doc/html/rfc5545#section-3.2)
+#[derive(Debug)]
 enum PropertyParams {
     /// Alternate text representation URI (`ALTREP`). §3.2.1
     Altrep(Altrep),

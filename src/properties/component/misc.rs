@@ -7,11 +7,13 @@ use crate::{params::Language, properties::SharedParams, values::Text};
 /// > REQUEST-STATUS:2.0;Success
 ///
 /// [Section 3.8.8.3](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.8.3)
+#[derive(Debug)]
 pub struct RequestStatus {
     value: Text,
     params: RequestStatusParams,
 }
 
+#[derive(Debug)]
 struct RequestStatusParams {
     shared: SharedParams,
     language: Option<Language>,
