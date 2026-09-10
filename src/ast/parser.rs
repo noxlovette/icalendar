@@ -3,8 +3,8 @@ use crate::{
     Calendar,
     ast::{
         CalendarBuilder, CalendarError, Component, EventBuilder,
-        FreeBusyBuilder, JournalBuilder, Property, TodoBuilder,
-        token::TokenType,
+        FreeBusyBuilder, JournalBuilder, Property, TimezoneBuilder,
+        TodoBuilder, token::TokenType,
     },
 };
 use TokenType::*;
@@ -77,6 +77,7 @@ impl Parser {
             b"VTODO" => TodoBuilder::new().into(),
             b"VJOURNAL" => JournalBuilder::new().into(),
             b"VFREEBUSY" => FreeBusyBuilder::new().into(),
+            b"VTIMEZONE" => TimezoneBuilder::new().into(),
             _ => return Err(ParseError::UnknownComponent),
         };
         self.consume(Crlf, "expected crlf after BEGIN")?;

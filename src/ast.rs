@@ -4,7 +4,7 @@ mod token;
 mod validator;
 use parser::{ParseError, ParseResult};
 
-use crate::{Calendar, components::todo, properties::*};
+use crate::{Calendar, properties::*};
 
 /// Splits a Bytes vector by given pattern
 pub(crate) fn split_once(b: &[u8], needle: u8) -> ParseResult<(&[u8], &[u8])> {
@@ -74,7 +74,7 @@ enum Component {
     /// Free/busy time information (`VFREEBUSY`).
     FreeBusy(FreeBusyBuilder),
     /// Time zone definition (`VTIMEZONE`).
-    Timezone,
+    Timezone(TimezoneBuilder),
 }
 
 impl From<EventBuilder> for Component {
@@ -100,6 +100,12 @@ impl From<FreeBusyBuilder> for Component {
     }
 }
 
+impl From<TimezoneBuilder> for Component {
+    fn from(value: TimezoneBuilder) -> Self {
+        Self::Timezone(value)
+    }
+}
+
 impl Component {
     /// Routes one already-parsed [`Property`] into the matching builder's
     /// own fields. What's legal for a given component is decided entirely
@@ -111,8 +117,7 @@ impl Component {
             Self::Todo(b) => b.ingest(p),
             Self::Journal(b) => b.ingest(p),
             Self::FreeBusy(b) => b.ingest(p),
-            // VTIMEZONE isn't wired up to a builder yet.
-            Self::Timezone => Err(ParseError::UnexpectedProperty),
+            Self::Timezone(b) => b.ingest(p),
         }
     }
 }
@@ -609,6 +614,7 @@ struct EventBuilder {
     /// more than once.
     dtstart: Option<DateTimeStart>,
     class: Option<Classification>,
+    created: Option<DateTimeCreated>,
     description: Option<Description>,
     geo: Option<Geo>,
     last_mod: Option<LastModified>,
@@ -651,6 +657,7 @@ impl PropertyIngest for EventBuilder {
             Property::Uid(v) => set_once(&mut self.uid, v, "UID"),
             Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
             Property::Classification(v) => set_once(&mut self.class, v, "CLASS"),
+            Property::DateTimeCreated(v) => set_once(&mut self.created, v, "CREATED"),
             Property::Description(v) => set_once(&mut self.description, v, "DESCRIPTION"),
             Property::Geo(v) => set_once(&mut self.geo, v, "GEO"),
             Property::LastModified(v) => set_once(&mut self.last_mod, v, "LAST-MODIFIED"),
@@ -686,17 +693,15 @@ impl PropertyIngest for EventBuilder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct TodoBuilder {
     dtstamp: Option<DateTimeStamp>,
     uid: Option<Uid>,
-    /// The following is REQUIRED if the component
-    /// appears in an iCalendar object that doesn't
-    /// specify the "METHOD" property; otherwise, it
-    /// is OPTIONAL; in any case, it MUST NOT occur
-    /// more than once.
     class: Option<Classification>,
+    completed: Option<Completed>,
+    created: Option<DateTimeCreated>,
     description: Option<Description>,
+    dtstart: Option<DateTimeStart>,
     geo: Option<Geo>,
     last_mod: Option<LastModified>,
     location: Option<Location>,
@@ -726,43 +731,123 @@ struct TodoBuilder {
 }
 
 impl TodoBuilder {
-    pub fn new() -> Self {
-        todo!()
+    fn new() -> Self {
+        Self::default()
     }
 }
 
 impl PropertyIngest for TodoBuilder {
-    fn ingest(&mut self, _p: Property) -> ParseResult<()> {
-        todo!("follow EventBuilder's PropertyIngest impl, scoped to VTODO's own property set (RFC 5545 §3.6.2)")
+    fn ingest(&mut self, p: Property) -> ParseResult<()> {
+        match p {
+            Property::DateTimeStamp(v) => set_once(&mut self.dtstamp, v, "DTSTAMP"),
+            Property::Uid(v) => set_once(&mut self.uid, v, "UID"),
+            Property::Classification(v) => set_once(&mut self.class, v, "CLASS"),
+            Property::Completed(v) => set_once(&mut self.completed, v, "COMPLETED"),
+            Property::DateTimeCreated(v) => set_once(&mut self.created, v, "CREATED"),
+            Property::Description(v) => set_once(&mut self.description, v, "DESCRIPTION"),
+            Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
+            Property::Geo(v) => set_once(&mut self.geo, v, "GEO"),
+            Property::LastModified(v) => set_once(&mut self.last_mod, v, "LAST-MODIFIED"),
+            Property::Location(v) => set_once(&mut self.location, v, "LOCATION"),
+            Property::Organizer(v) => set_once(&mut self.organizer, v, "ORGANIZER"),
+            Property::PercentComplete(v) => set_once(&mut self.percent, v, "PERCENT-COMPLETE"),
+            Property::Priority(v) => set_once(&mut self.priority, v, "PRIORITY"),
+            Property::RecurrenceId(v) => set_once(&mut self.recur_id, v, "RECURRENCE-ID"),
+            Property::Sequence(v) => set_once(&mut self.seq, v, "SEQUENCE"),
+            Property::Status(v) => set_once(&mut self.status, v, "STATUS"),
+            Property::Summary(v) => set_once(&mut self.summary, v, "SUMMARY"),
+            Property::UniformResourceLocator(v) => set_once(&mut self.url, v, "URL"),
+            Property::RRule(v) => set_once(&mut self.rrule, v, "RRULE"),
+            // DUE and DURATION are mutually exclusive within a VTODO, and
+            // DURATION requires DTSTART to also be present (RFC 5545
+            // §3.6.2) — cross-field rules, checked in `build()`.
+            Property::DateTimeDue(v) => set_once(&mut self.due, v, "DUE"),
+            Property::Duration(v) => set_once(&mut self.duration, v, "DURATION"),
+            Property::Attachment(v) => Ok(self.attach.push(v)),
+            Property::Attendee(v) => Ok(self.attendee.push(v)),
+            Property::Categories(v) => Ok(self.categories.push(v)),
+            Property::Comment(v) => Ok(self.comment.push(v)),
+            Property::Contact(v) => Ok(self.contact.push(v)),
+            Property::ExceptionDateTimes(v) => Ok(self.exdate.push(v)),
+            Property::RequestStatus(v) => Ok(self.rstatus.push(v)),
+            Property::RelatedTo(v) => Ok(self.related.push(v)),
+            Property::Resources(v) => Ok(self.resources.push(v)),
+            Property::RecurrenceDateTimes(v) => Ok(self.rdate.push(v)),
+            Property::Xprop(v) => Ok(self.xprop.push(v)),
+            Property::Iana(v) => Ok(self.iana.push(v)),
+            _ => Err(ParseError::UnexpectedProperty),
+        }
     }
 }
 
 impl FreeBusyBuilder {
-    pub fn new() -> Self {
-        todo!()
+    fn new() -> Self {
+        Self::default()
     }
 }
 
 impl PropertyIngest for FreeBusyBuilder {
-    fn ingest(&mut self, _p: Property) -> ParseResult<()> {
-        todo!("follow EventBuilder's PropertyIngest impl, scoped to VFREEBUSY's own property set (RFC 5545 §3.6.4)")
+    fn ingest(&mut self, p: Property) -> ParseResult<()> {
+        match p {
+            Property::DateTimeStamp(v) => set_once(&mut self.dtstamp, v, "DTSTAMP"),
+            Property::Uid(v) => set_once(&mut self.uid, v, "UID"),
+            Property::Contact(v) => set_once(&mut self.contact, v, "CONTACT"),
+            Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
+            Property::DateTimeEnd(v) => set_once(&mut self.dtend, v, "DTEND"),
+            Property::Organizer(v) => set_once(&mut self.organizer, v, "ORGANIZER"),
+            Property::UniformResourceLocator(v) => set_once(&mut self.url, v, "URL"),
+            Property::Attendee(v) => Ok(self.attendee.push(v)),
+            Property::Comment(v) => Ok(self.comment.push(v)),
+            Property::FreeBusyTime(v) => Ok(self.freebusy.push(v)),
+            Property::RequestStatus(v) => Ok(self.rstatus.push(v)),
+            Property::Xprop(v) => Ok(self.xprop.push(v)),
+            Property::Iana(v) => Ok(self.iana.push(v)),
+            _ => Err(ParseError::UnexpectedProperty),
+        }
     }
 }
 impl JournalBuilder {
-    pub fn new() -> Self {
-        todo!()
+    fn new() -> Self {
+        Self::default()
     }
 }
 
 impl PropertyIngest for JournalBuilder {
-    fn ingest(&mut self, _p: Property) -> ParseResult<()> {
-        todo!("follow EventBuilder's PropertyIngest impl, scoped to VJOURNAL's own property set (RFC 5545 §3.6.3)")
+    fn ingest(&mut self, p: Property) -> ParseResult<()> {
+        match p {
+            Property::DateTimeStamp(v) => set_once(&mut self.dtstamp, v, "DTSTAMP"),
+            Property::Uid(v) => set_once(&mut self.uid, v, "UID"),
+            Property::Classification(v) => set_once(&mut self.class, v, "CLASS"),
+            Property::DateTimeCreated(v) => set_once(&mut self.created, v, "CREATED"),
+            Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
+            Property::LastModified(v) => set_once(&mut self.last_mod, v, "LAST-MODIFIED"),
+            Property::Organizer(v) => set_once(&mut self.organizer, v, "ORGANIZER"),
+            Property::RecurrenceId(v) => set_once(&mut self.recurid, v, "RECURRENCE-ID"),
+            Property::Sequence(v) => set_once(&mut self.seq, v, "SEQUENCE"),
+            Property::Status(v) => set_once(&mut self.status, v, "STATUS"),
+            Property::Summary(v) => set_once(&mut self.summary, v, "SUMMARY"),
+            Property::UniformResourceLocator(v) => set_once(&mut self.url, v, "URL"),
+            Property::RRule(v) => set_once(&mut self.rrule, v, "RRULE"),
+            Property::Attachment(v) => Ok(self.attach.push(v)),
+            Property::Attendee(v) => Ok(self.attendee.push(v)),
+            Property::Categories(v) => Ok(self.categories.push(v)),
+            Property::Comment(v) => Ok(self.comment.push(v)),
+            Property::Contact(v) => Ok(self.contact.push(v)),
+            Property::Description(v) => Ok(self.description.push(v)),
+            Property::ExceptionDateTimes(v) => Ok(self.exdate.push(v)),
+            Property::RelatedTo(v) => Ok(self.related.push(v)),
+            Property::RecurrenceDateTimes(v) => Ok(self.rdate.push(v)),
+            Property::RequestStatus(v) => Ok(self.rstatus.push(v)),
+            Property::Xprop(v) => Ok(self.xprop.push(v)),
+            Property::Iana(v) => Ok(self.iana.push(v)),
+            _ => Err(ParseError::UnexpectedProperty),
+        }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct FreeBusyBuilder {
-    dtstamp: DateTimeStamp,
-    uid: Uid,
+    dtstamp: Option<DateTimeStamp>,
+    uid: Option<Uid>,
     contact: Option<Contact>,
     dtstart: Option<DateTimeStart>,
     dtend: Option<DateTimeEnd>,
@@ -776,10 +861,10 @@ struct FreeBusyBuilder {
     iana: Vec<Iana>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct JournalBuilder {
-    dtstamp: DateTimeStamp,
-    uid: Uid,
+    dtstamp: Option<DateTimeStamp>,
+    uid: Option<Uid>,
     class: Option<Classification>,
     created: Option<DateTimeCreated>,
     dtstart: Option<DateTimeStart>,
@@ -803,4 +888,38 @@ struct JournalBuilder {
     rstatus: Vec<RequestStatus>,
     xprop: Vec<Xprop>,
     iana: Vec<Iana>,
+}
+
+/// Builder for `VTIMEZONE` (RFC 5545 §3.6.5). Only the component's own flat
+/// properties are ingested here — the required `STANDARD`/`DAYLIGHT`
+/// sub-components are themselves nested components, which need the
+/// recursive `BEGIN`/`END` handling [`crate::ast::parser::Parser::component`]
+/// doesn't do yet. `build()` will be the place that rejects a `VTIMEZONE`
+/// with no sub-component once parsing can actually collect them.
+#[derive(Debug, Default)]
+struct TimezoneBuilder {
+    tzid: Option<TimeZoneIdentifier>,
+    last_mod: Option<LastModified>,
+    tzurl: Option<TimeZoneUrl>,
+    xprop: Vec<Xprop>,
+    iana: Vec<Iana>,
+}
+
+impl TimezoneBuilder {
+    fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl PropertyIngest for TimezoneBuilder {
+    fn ingest(&mut self, p: Property) -> ParseResult<()> {
+        match p {
+            Property::TimeZoneIdentifier(v) => set_once(&mut self.tzid, v, "TZID"),
+            Property::LastModified(v) => set_once(&mut self.last_mod, v, "LAST-MODIFIED"),
+            Property::TimeZoneUrl(v) => set_once(&mut self.tzurl, v, "TZURL"),
+            Property::Xprop(v) => Ok(self.xprop.push(v)),
+            Property::Iana(v) => Ok(self.iana.push(v)),
+            _ => Err(ParseError::UnexpectedProperty),
+        }
+    }
 }
