@@ -4,7 +4,7 @@ mod token;
 mod validator;
 use parser::{ParseError, ParseResult};
 
-use crate::{Calendar, properties::*};
+use crate::{Calendar, components::todo, properties::*};
 
 /// Splits a Bytes vector by given pattern
 pub(crate) fn split_once(b: &[u8], needle: u8) -> ParseResult<(&[u8], &[u8])> {
@@ -98,6 +98,47 @@ impl From<FreeBusyBuilder> for Component {
     fn from(value: FreeBusyBuilder) -> Self {
         Self::FreeBusy(value)
     }
+}
+
+impl Component {
+    /// Routes one already-parsed [`Property`] into the matching builder's
+    /// own fields. What's legal for a given component is decided entirely
+    /// by that component's own [`PropertyIngest`] impl — this is just the
+    /// dispatch from "which component" to "which builder".
+    fn ingest(&mut self, p: Property) -> ParseResult<()> {
+        match self {
+            Self::Event(b) => b.ingest(p),
+            Self::Todo(b) => b.ingest(p),
+            Self::Journal(b) => b.ingest(p),
+            Self::FreeBusy(b) => b.ingest(p),
+            // VTIMEZONE isn't wired up to a builder yet.
+            Self::Timezone => Err(ParseError::UnexpectedProperty),
+        }
+    }
+}
+
+/// Routes one already-parsed [`Property`] into a component builder's own
+/// fields. Implemented once per builder, each owning the decision of what's
+/// legal for its own component type (RFC 5545 §3.6) — a name absent from a
+/// given impl's `match` isn't valid on that component and is an error, the
+/// same way [`Property::parse`] owns "what does this keyword mean" instead
+/// of the parser.
+trait PropertyIngest {
+    fn ingest(&mut self, p: Property) -> ParseResult<()>;
+}
+
+/// Assigns `value` into a singleton property slot, or reports the RFC 5545
+/// violation of the same property occurring twice in one component.
+fn set_once<T>(
+    slot: &mut Option<T>,
+    value: T,
+    name: &'static str,
+) -> ParseResult<()> {
+    if slot.is_some() {
+        return Err(ParseError::DuplicateProperty(name));
+    }
+    *slot = Some(value);
+    Ok(())
 }
 
 /// A calendar property, wrapping every property type defined in
@@ -445,17 +486,18 @@ impl From<Iana> for Property {
 
 /// Parses a property's raw, unparsed remainder (`*(";" param) ":" value`,
 /// exactly what a [`TokenType::Property`](super::ast::token::TokenType::Property)
-/// token's `literal()` carries) into the matching [`Property`] variant,
-/// keyed by the token's upper-cased name (`lexeme()`).
+/// token's `literal()` carries) into the matching [`Property`] variant.
+/// Backs [`Property::parse`]'s dispatch table.
 type PropertyParser = fn(&[u8]) -> ParseResult<Property>;
 
 /// Name -> parser dispatch table for every property RFC 5545 defines by
-/// keyword (§3.7, §3.8). This is the single place that knows "PRODID means
-/// a `ProductIdentifier`" — replacing what used to be a `TokenType` keyword
-/// classified by the lexer itself. Built with [`phf`] (the same mechanism
-/// the old lexer used for its `KEYWORDS` map) so the lookup stays O(1) —
-/// a compile-time perfect hash, not a `match` over byte-string patterns
-/// (which codegens as a comparison chain, not a jump table).
+/// keyword (§3.7, §3.8), used by [`Property::parse`]. This is the single
+/// place that knows "PRODID means a `ProductIdentifier`" — replacing what
+/// used to be a `TokenType` keyword classified by the lexer itself. Built
+/// with [`phf`] (the same mechanism the old lexer used for its `KEYWORDS`
+/// map) so the lookup stays O(1) — a compile-time perfect hash, not a
+/// `match` over byte-string patterns (which codegens as a comparison chain,
+/// not a jump table).
 static PROPERTY_DISPATCH: phf::Map<&'static [u8], PropertyParser> = phf::phf_map! {
     b"CALSCALE" => |v| CalendarScale::try_from(v).map(Into::into),
     b"METHOD" => |v| Method::try_from(v).map(Into::into),
@@ -505,22 +547,26 @@ static PROPERTY_DISPATCH: phf::Map<&'static [u8], PropertyParser> = phf::phf_map
     b"RRULE" => |v| RRule::try_from(v).map(Into::into),
 };
 
-/// Dispatches a [`TokenType::Property`](super::ast::token::TokenType::Property)
-/// token's name and raw remainder to the matching property type's
-/// `TryFrom<&[u8]>`. A name absent from [`PROPERTY_DISPATCH`] isn't an
-/// error — `X-`/IANA extension properties are open-ended by design
-/// ([Section 3.8.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.8))
-/// — it just falls back to [`Xprop`]/[`Iana`].
-pub(crate) fn parse_property(
-    name: &[u8],
-    remainder: &[u8],
-) -> ParseResult<Property> {
-    if let Some(parse) = PROPERTY_DISPATCH.get(name) {
-        parse(remainder)
-    } else if name.starts_with(b"X-") {
-        Xprop::try_from(remainder).map(Into::into)
-    } else {
-        Iana::try_from(remainder).map(Into::into)
+impl Property {
+    /// Parses a [`TokenType::Property`](super::ast::token::TokenType::Property)
+    /// token's name and raw remainder (`*(";" param) ":" value`) into the
+    /// matching [`Property`] variant, dispatching on the token's upper-cased
+    /// name (`lexeme()`) via [`PROPERTY_DISPATCH`]. A name absent from the
+    /// table isn't an error — `X-`/IANA extension properties are open-ended
+    /// by design
+    /// ([Section 3.8.8](https://datatracker.ietf.org/doc/html/rfc5545#section-3.8.8))
+    /// — it just falls back to [`Xprop`]/[`Iana`].
+    pub(crate) fn parse(
+        name: &[u8],
+        remainder: &[u8],
+    ) -> ParseResult<Property> {
+        if let Some(parse) = PROPERTY_DISPATCH.get(name) {
+            parse(remainder)
+        } else if name.starts_with(b"X-") {
+            Xprop::try_from(remainder).map(Into::into)
+        } else {
+            Iana::try_from(remainder).map(Into::into)
+        }
     }
 }
 
@@ -572,7 +618,7 @@ struct EventBuilder {
     seq: Option<Sequence>,
     status: Option<Status>,
     summary: Option<Summary>,
-    transp: Option<String>,
+    transp: Option<TimeTransparency>,
     url: Option<UniformResourceLocator>,
     recurid: Option<RecurrenceId>,
     rrule: Option<RRule>,
@@ -588,13 +634,55 @@ struct EventBuilder {
     related: Vec<RelatedTo>,
     resources: Vec<Resources>,
     rdate: Vec<RecurrenceDateTimes>,
-    xprop: Option<Xprop>,
-    iana: Option<Iana>,
+    xprop: Vec<Xprop>,
+    iana: Vec<Iana>,
 }
 
 impl EventBuilder {
     fn new() -> Self {
         Self::default()
+    }
+}
+
+impl PropertyIngest for EventBuilder {
+    fn ingest(&mut self, p: Property) -> ParseResult<()> {
+        match p {
+            Property::DateTimeStamp(v) => set_once(&mut self.dtstamp, v, "DTSTAMP"),
+            Property::Uid(v) => set_once(&mut self.uid, v, "UID"),
+            Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
+            Property::Classification(v) => set_once(&mut self.class, v, "CLASS"),
+            Property::Description(v) => set_once(&mut self.description, v, "DESCRIPTION"),
+            Property::Geo(v) => set_once(&mut self.geo, v, "GEO"),
+            Property::LastModified(v) => set_once(&mut self.last_mod, v, "LAST-MODIFIED"),
+            Property::Location(v) => set_once(&mut self.location, v, "LOCATION"),
+            Property::Organizer(v) => set_once(&mut self.organizer, v, "ORGANIZER"),
+            Property::Priority(v) => set_once(&mut self.priority, v, "PRIORITY"),
+            Property::Sequence(v) => set_once(&mut self.seq, v, "SEQUENCE"),
+            Property::Status(v) => set_once(&mut self.status, v, "STATUS"),
+            Property::Summary(v) => set_once(&mut self.summary, v, "SUMMARY"),
+            Property::TimeTransparency(v) => set_once(&mut self.transp, v, "TRANSP"),
+            Property::UniformResourceLocator(v) => set_once(&mut self.url, v, "URL"),
+            Property::RecurrenceId(v) => set_once(&mut self.recurid, v, "RECURRENCE-ID"),
+            Property::RRule(v) => set_once(&mut self.rrule, v, "RRULE"),
+            // DTEND and DURATION are mutually exclusive within a VEVENT
+            // (RFC 5545 §3.6.1) — that's a cross-field rule, checked in
+            // `build()` once every property has been seen, not here.
+            Property::DateTimeEnd(v) => set_once(&mut self.dtend, v, "DTEND"),
+            Property::Duration(v) => set_once(&mut self.duration, v, "DURATION"),
+            Property::Attachment(v) => Ok(self.attach.push(v)),
+            Property::Attendee(v) => Ok(self.attendee.push(v)),
+            Property::Categories(v) => Ok(self.categories.push(v)),
+            Property::Comment(v) => Ok(self.comment.push(v)),
+            Property::Contact(v) => Ok(self.contact.push(v)),
+            Property::ExceptionDateTimes(v) => Ok(self.exdate.push(v)),
+            Property::RequestStatus(v) => Ok(self.rstatus.push(v)),
+            Property::RelatedTo(v) => Ok(self.related.push(v)),
+            Property::Resources(v) => Ok(self.resources.push(v)),
+            Property::RecurrenceDateTimes(v) => Ok(self.rdate.push(v)),
+            Property::Xprop(v) => Ok(self.xprop.push(v)),
+            Property::Iana(v) => Ok(self.iana.push(v)),
+            _ => Err(ParseError::UnexpectedProperty),
+        }
     }
 }
 
@@ -633,8 +721,8 @@ struct TodoBuilder {
     related: Vec<RelatedTo>,
     resources: Vec<Resources>,
     rdate: Vec<RecurrenceDateTimes>,
-    xprop: Xprop,
-    iana: Iana,
+    xprop: Vec<Xprop>,
+    iana: Vec<Iana>,
 }
 
 impl TodoBuilder {
@@ -643,14 +731,32 @@ impl TodoBuilder {
     }
 }
 
+impl PropertyIngest for TodoBuilder {
+    fn ingest(&mut self, _p: Property) -> ParseResult<()> {
+        todo!("follow EventBuilder's PropertyIngest impl, scoped to VTODO's own property set (RFC 5545 §3.6.2)")
+    }
+}
+
 impl FreeBusyBuilder {
     pub fn new() -> Self {
         todo!()
     }
 }
+
+impl PropertyIngest for FreeBusyBuilder {
+    fn ingest(&mut self, _p: Property) -> ParseResult<()> {
+        todo!("follow EventBuilder's PropertyIngest impl, scoped to VFREEBUSY's own property set (RFC 5545 §3.6.4)")
+    }
+}
 impl JournalBuilder {
     pub fn new() -> Self {
         todo!()
+    }
+}
+
+impl PropertyIngest for JournalBuilder {
+    fn ingest(&mut self, _p: Property) -> ParseResult<()> {
+        todo!("follow EventBuilder's PropertyIngest impl, scoped to VJOURNAL's own property set (RFC 5545 §3.6.3)")
     }
 }
 #[derive(Debug)]
@@ -666,8 +772,8 @@ struct FreeBusyBuilder {
     comment: Vec<Comment>,
     freebusy: Vec<FreeBusyTime>,
     rstatus: Vec<RequestStatus>,
-    xprop: Xprop,
-    iana: Iana,
+    xprop: Vec<Xprop>,
+    iana: Vec<Iana>,
 }
 
 #[derive(Debug)]
@@ -695,6 +801,6 @@ struct JournalBuilder {
     related: Vec<RelatedTo>,
     rdate: Vec<RecurrenceDateTimes>,
     rstatus: Vec<RequestStatus>,
-    xprop: Xprop,
-    iana: Iana,
+    xprop: Vec<Xprop>,
+    iana: Vec<Iana>,
 }

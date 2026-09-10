@@ -4,7 +4,7 @@ use crate::{
     ast::{
         CalendarBuilder, CalendarError, Component, EventBuilder,
         FreeBusyBuilder, JournalBuilder, Property, TodoBuilder,
-        parse_property, token::TokenType,
+        token::TokenType,
     },
 };
 use TokenType::*;
@@ -18,7 +18,7 @@ use thiserror::Error;
 /// recurses further for nested components (`VALARM` inside `VEVENT`, etc.
 /// — not yet wired up). There's no sub-line grammar left to descend into
 /// here — a property line arrives from the lexer as one opaque
-/// [`TokenType::Property`] token, and [`parse_property`] (backed by a
+/// [`TokenType::Property`] token, and [`Property::parse`] (backed by a
 /// name -> parser dispatch table, see `crate::ast::PROPERTY_DISPATCH`)
 /// hands back a fully-parsed [`Property`] in one step.
 #[derive(Default, Debug)]
@@ -44,7 +44,7 @@ impl Parser {
         while !self.check(Begin)? {
             let prop =
                 self.consume(Property, "expected a calendar property")?;
-            let property = parse_property(prop.lexeme(), prop.literal())?;
+            let property = Property::parse(prop.lexeme(), prop.literal())?;
             self.consume(Crlf, "expected crlf after property")?;
 
             match property {
@@ -72,7 +72,7 @@ impl Parser {
             self.consume(Begin, "expected component to start with BEGIN")?;
         let name = begin.literal().to_vec();
 
-        let component: Component = match name.as_slice() {
+        let mut component: Component = match name.as_slice() {
             b"VEVENT" => EventBuilder::new().into(),
             b"VTODO" => TodoBuilder::new().into(),
             b"VJOURNAL" => JournalBuilder::new().into(),
@@ -83,14 +83,12 @@ impl Parser {
 
         while !self.check(End)? {
             let prop = self.consume(Property, "expected a property line")?;
-            let _property = parse_property(prop.lexeme(), prop.literal())?;
+            let property = Property::parse(prop.lexeme(), prop.literal())?;
             self.consume(Crlf, "expected crlf after property")?;
-
-            todo!("route `_property` into `component`'s builder fields")
+            component.ingest(property)?;
         }
 
-        let end =
-            self.consume(End, "expected component to end with END")?;
+        let end = self.consume(End, "expected component to end with END")?;
         if end.literal() != name.as_slice() {
             return Err(ParseError::MismatchedEnd);
         }
@@ -190,6 +188,11 @@ pub enum ParseError {
 
     #[error("property is not valid at this position in the grammar")]
     UnexpectedProperty,
+
+    /// A property that RFC 5545 says MUST NOT occur more than once within
+    /// a component showed up a second time.
+    #[error("{0} MUST NOT occur more than once in this component")]
+    DuplicateProperty(&'static str),
 
     #[error("component's END name doesn't match its BEGIN name")]
     MismatchedEnd,
