@@ -119,7 +119,9 @@ fn param_name(segment: &[u8]) -> Result<&[u8], ParseError> {
 /// This trait ensures that all parameters as used in properties have iana and
 /// x-name params 100% of the time
 pub trait Params<'a>: Default + Debug + TryFrom<&'a [u8]> {
+    /// returns the iana properties of a param
     fn get_iana(&self) -> &[Text];
+    /// returns the xname properties of a param
     fn get_xname(&self) -> &[Text];
 }
 

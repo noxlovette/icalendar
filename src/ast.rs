@@ -133,6 +133,23 @@ impl Component {
             _ => Err(ParseError::UnexpectedComponent("VALARM")),
         }
     }
+
+    /// Routes a fully-parsed `STANDARD`/`DAYLIGHT` sub-component (see
+    /// [`crate::ast::parser::Parser::tz_observance`]) into the matching
+    /// observance list — `VTIMEZONE` only (RFC 5545 §3.6.5).
+    fn ingest_tz_observance(
+        &mut self,
+        kind: TzObservanceKind,
+        tz_prop: TzPropBuilder,
+    ) -> ParseResult<()> {
+        match self {
+            Self::Timezone(b) => Ok(match kind {
+                TzObservanceKind::Standard => b.standardc.push(tz_prop),
+                TzObservanceKind::Daylight => b.daylightc.push(tz_prop),
+            }),
+            _ => Err(ParseError::UnexpectedComponent("STANDARD/DAYLIGHT")),
+        }
+    }
 }
 
 /// Routes one already-parsed [`Property`] into a component builder's own
@@ -956,12 +973,11 @@ struct JournalBuilder {
     iana: Vec<Iana>,
 }
 
-/// Builder for `VTIMEZONE` (RFC 5545 §3.6.5). Only the component's own flat
-/// properties are ingested here — the required `STANDARD`/`DAYLIGHT`
-/// sub-components are themselves nested components, which need the
-/// recursive `BEGIN`/`END` handling [`crate::ast::parser::Parser::component`]
-/// doesn't do yet. `build()` will be the place that rejects a `VTIMEZONE`
-/// with no sub-component once parsing can actually collect them.
+/// Builder for `VTIMEZONE` (RFC 5545 §3.6.5). `standardc`/`daylightc` hold
+/// its nested `STANDARD`/`DAYLIGHT` sub-components (see
+/// [`crate::ast::parser::Parser::tz_observance`]) — `build()` is still the
+/// place that enforces "at least one of either" once every property and
+/// sub-component has been seen.
 #[derive(Debug, Default)]
 struct TimezoneBuilder {
     tzid: Option<TimeZoneIdentifier>,
@@ -969,6 +985,8 @@ struct TimezoneBuilder {
     tzurl: Option<TimeZoneUrl>,
     xprop: Vec<Xprop>,
     iana: Vec<Iana>,
+    standardc: Vec<TzPropBuilder>,
+    daylightc: Vec<TzPropBuilder>,
 }
 
 impl TimezoneBuilder {
@@ -983,6 +1001,60 @@ impl PropertyIngest for TimezoneBuilder {
             Property::TimeZoneIdentifier(v) => set_once(&mut self.tzid, v, "TZID"),
             Property::LastModified(v) => set_once(&mut self.last_mod, v, "LAST-MODIFIED"),
             Property::TimeZoneUrl(v) => set_once(&mut self.tzurl, v, "TZURL"),
+            Property::Xprop(v) => Ok(self.xprop.push(v)),
+            Property::Iana(v) => Ok(self.iana.push(v)),
+            _ => Err(ParseError::UnexpectedProperty),
+        }
+    }
+}
+
+/// Which sub-component produced a given [`TzPropBuilder`] — `STANDARD` and
+/// `DAYLIGHT` (RFC 5545 §3.6.5) share an identical `tzprop` property
+/// grammar and differ only in which of `VTIMEZONE`'s two observance lists
+/// they belong to.
+enum TzObservanceKind {
+    Standard,
+    Daylight,
+}
+
+/// Builder for the `tzprop` grammar shared by `STANDARD`/`DAYLIGHT`
+/// sub-components (RFC 5545 §3.6.5). Nested only inside `VTIMEZONE`, via
+/// [`Component::ingest_tz_observance`].
+#[derive(Debug, Default)]
+struct TzPropBuilder {
+    dtstart: Option<DateTimeStart>,
+    tz_offset_to: Option<TimeZoneOffsetTo>,
+    tz_offset_from: Option<TimeZoneOffsetFrom>,
+    // RRULE is optional but SHOULD NOT occur more than once (RFC 5545
+    // §3.6.5) — same "singleton in practice" treatment as elsewhere.
+    rrule: Option<RRule>,
+    comment: Vec<Comment>,
+    rdate: Vec<RecurrenceDateTimes>,
+    tzname: Vec<TimeZoneName>,
+    xprop: Vec<Xprop>,
+    iana: Vec<Iana>,
+}
+
+impl TzPropBuilder {
+    fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl PropertyIngest for TzPropBuilder {
+    fn ingest(&mut self, p: Property) -> ParseResult<()> {
+        match p {
+            Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
+            Property::TimeZoneOffsetTo(v) => {
+                set_once(&mut self.tz_offset_to, v, "TZOFFSETTO")
+            }
+            Property::TimeZoneOffsetFrom(v) => {
+                set_once(&mut self.tz_offset_from, v, "TZOFFSETFROM")
+            }
+            Property::RRule(v) => set_once(&mut self.rrule, v, "RRULE"),
+            Property::Comment(v) => Ok(self.comment.push(v)),
+            Property::RecurrenceDateTimes(v) => Ok(self.rdate.push(v)),
+            Property::TimeZoneName(v) => Ok(self.tzname.push(v)),
             Property::Xprop(v) => Ok(self.xprop.push(v)),
             Property::Iana(v) => Ok(self.iana.push(v)),
             _ => Err(ParseError::UnexpectedProperty),

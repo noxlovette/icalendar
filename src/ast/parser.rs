@@ -4,7 +4,8 @@ use crate::{
     ast::{
         AlarmBuilder, CalendarBuilder, CalendarError, Component,
         EventBuilder, FreeBusyBuilder, JournalBuilder, Property,
-        PropertyIngest, TimezoneBuilder, TodoBuilder, token::TokenType,
+        PropertyIngest, TimezoneBuilder, TodoBuilder, TzObservanceKind,
+        TzPropBuilder, token::TokenType,
     },
 };
 use TokenType::*;
@@ -84,8 +85,22 @@ impl Parser {
 
         while !self.check(End)? {
             if self.check(Begin)? {
-                let alarm = self.alarm()?;
-                component.ingest_alarm(alarm)?;
+                // Dispatch on the sub-component's own name, same as the
+                // top-level `match` above — legality of nesting it *here*
+                // is then decided by `component`'s own `ingest_*` (a
+                // `VALARM` under `VJOURNAL`, say, parses fine below and is
+                // rejected by `ingest_alarm`).
+                match self.peek()?.literal() {
+                    b"VALARM" => {
+                        let alarm = self.alarm()?;
+                        component.ingest_alarm(alarm)?;
+                    }
+                    b"STANDARD" | b"DAYLIGHT" => {
+                        let (kind, tz_prop) = self.tz_observance()?;
+                        component.ingest_tz_observance(kind, tz_prop)?;
+                    }
+                    _ => return Err(ParseError::UnknownComponent),
+                }
             } else {
                 let prop =
                     self.consume(Property, "expected a property line")?;
@@ -136,6 +151,42 @@ impl Parser {
         self.consume(Crlf, "expected crlf after END")?;
 
         Ok(alarm)
+    }
+
+    /// parses one `BEGIN:STANDARD ... END:STANDARD` or `BEGIN:DAYLIGHT ...
+    /// END:DAYLIGHT` sub-component (RFC 5545 §3.6.5) — structurally the
+    /// same shape as [`Self::alarm`]: its own grammar production
+    /// (`STANDARD`/`DAYLIGHT` share one property alphabet, `tzprop`), its
+    /// own builder type ([`TzPropBuilder`]), no further nesting.
+    fn tz_observance(
+        &mut self,
+    ) -> ParseResult<(TzObservanceKind, TzPropBuilder)> {
+        let begin = self
+            .consume(Begin, "expected sub-component to start with BEGIN")?;
+        let kind = match begin.literal() {
+            b"STANDARD" => TzObservanceKind::Standard,
+            b"DAYLIGHT" => TzObservanceKind::Daylight,
+            _ => return Err(ParseError::UnknownComponent),
+        };
+        let name = begin.literal().to_vec();
+        self.consume(Crlf, "expected crlf after BEGIN")?;
+
+        let mut tz_prop = TzPropBuilder::new();
+        while !self.check(End)? {
+            let prop = self.consume(Property, "expected a property line")?;
+            let property = Property::parse(prop.lexeme(), prop.literal())?;
+            self.consume(Crlf, "expected crlf after property")?;
+            tz_prop.ingest(property)?;
+        }
+
+        let end =
+            self.consume(End, "expected sub-component to end with END")?;
+        if end.literal() != name.as_slice() {
+            return Err(ParseError::MismatchedEnd);
+        }
+        self.consume(Crlf, "expected crlf after END")?;
+
+        Ok((kind, tz_prop))
     }
 
     /// checks if the next token corresponds to one of passed token types
