@@ -120,6 +120,19 @@ impl Component {
             Self::Timezone(b) => b.ingest(p),
         }
     }
+
+    /// Routes a fully-parsed `VALARM` sub-component (see
+    /// [`crate::ast::parser::Parser::alarm`]) into a builder that's allowed
+    /// to contain one — `VEVENT`/`VTODO` only (RFC 5545 §3.6.1, §3.6.2).
+    /// No other component can legally contain a `VALARM`, so this is a
+    /// plain match rather than a trait every builder has to implement.
+    fn ingest_alarm(&mut self, alarm: AlarmBuilder) -> ParseResult<()> {
+        match self {
+            Self::Event(b) => Ok(b.alarms.push(alarm)),
+            Self::Todo(b) => Ok(b.alarms.push(alarm)),
+            _ => Err(ParseError::UnexpectedComponent("VALARM")),
+        }
+    }
 }
 
 /// Routes one already-parsed [`Property`] into a component builder's own
@@ -642,6 +655,7 @@ struct EventBuilder {
     rdate: Vec<RecurrenceDateTimes>,
     xprop: Vec<Xprop>,
     iana: Vec<Iana>,
+    alarms: Vec<AlarmBuilder>,
 }
 
 impl EventBuilder {
@@ -728,6 +742,7 @@ struct TodoBuilder {
     rdate: Vec<RecurrenceDateTimes>,
     xprop: Vec<Xprop>,
     iana: Vec<Iana>,
+    alarms: Vec<AlarmBuilder>,
 }
 
 impl TodoBuilder {
@@ -773,6 +788,57 @@ impl PropertyIngest for TodoBuilder {
             Property::RelatedTo(v) => Ok(self.related.push(v)),
             Property::Resources(v) => Ok(self.resources.push(v)),
             Property::RecurrenceDateTimes(v) => Ok(self.rdate.push(v)),
+            Property::Xprop(v) => Ok(self.xprop.push(v)),
+            Property::Iana(v) => Ok(self.iana.push(v)),
+            _ => Err(ParseError::UnexpectedProperty),
+        }
+    }
+}
+
+/// Builder for `VALARM` (RFC 5545 §3.6.6), nested only inside `VEVENT`/
+/// `VTODO` (see [`Component::ingest_alarm`]). RFC 5545 actually splits this
+/// into three alternative property sets — `audioprop`/`dispprop`/
+/// `emailprop` — selected by `ACTION`'s value (AUDIO/DISPLAY/EMAIL), each
+/// with its own required/optional/cardinality rules for `DESCRIPTION`,
+/// `SUMMARY`, `ATTENDEE`, and `ATTACH`. Ingest only enforces the union of
+/// what's structurally possible across all three (hence `Option` here even
+/// for fields a given `ACTION` will require, and `Vec` for `ATTACH` even
+/// though only `emailprop` allows more than one) — which alternative
+/// actually applies, and whether this alarm satisfies it, is a `build()`-
+/// time check once `ACTION` is known.
+#[derive(Debug, Default)]
+struct AlarmBuilder {
+    action: Option<Action>,
+    trigger: Option<Trigger>,
+    // DURATION and REPEAT are optional but MUST appear together (RFC 5545
+    // §3.6.6) — a cross-field rule, checked in `build()`.
+    duration: Option<Duration>,
+    repeat: Option<Repeat>,
+    description: Option<Description>,
+    summary: Option<Summary>,
+    attendee: Vec<Attendee>,
+    attach: Vec<Attachment>,
+    xprop: Vec<Xprop>,
+    iana: Vec<Iana>,
+}
+
+impl AlarmBuilder {
+    fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl PropertyIngest for AlarmBuilder {
+    fn ingest(&mut self, p: Property) -> ParseResult<()> {
+        match p {
+            Property::Action(v) => set_once(&mut self.action, v, "ACTION"),
+            Property::Trigger(v) => set_once(&mut self.trigger, v, "TRIGGER"),
+            Property::Duration(v) => set_once(&mut self.duration, v, "DURATION"),
+            Property::Repeat(v) => set_once(&mut self.repeat, v, "REPEAT"),
+            Property::Description(v) => set_once(&mut self.description, v, "DESCRIPTION"),
+            Property::Summary(v) => set_once(&mut self.summary, v, "SUMMARY"),
+            Property::Attendee(v) => Ok(self.attendee.push(v)),
+            Property::Attachment(v) => Ok(self.attach.push(v)),
             Property::Xprop(v) => Ok(self.xprop.push(v)),
             Property::Iana(v) => Ok(self.iana.push(v)),
             _ => Err(ParseError::UnexpectedProperty),
