@@ -1,4 +1,6 @@
-Winnow-based parser
+# Cratical
+
+> The name is inspired by the libical repo. In our case, it's crate + ical
 
 ## Test data attribution
 
