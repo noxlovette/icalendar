@@ -72,6 +72,13 @@ pub struct DateTimeEnd {
 impl_try_from_bytes!(DateTimeEnd, DateOrDatetime, DateTimeParams);
 
 impl DateTimeEnd {
+    /// The parsed `DTEND` value — used by `build()` to cross-check its
+    /// value type (DATE vs DATE-TIME) against the component's `DTSTART`
+    /// (RFC 5545 §3.8.2.2).
+    pub(crate) fn value(&self) -> &DateOrDatetime {
+        &self.value
+    }
+
     /// The `TZID` parameter, if present — used by the calendar-wide check
     /// that every referenced `TZID` matches a `VTIMEZONE` defined in the
     /// same `VCALENDAR` (RFC 5545 §3.6.5).
@@ -97,6 +104,13 @@ pub struct DateTimeDue {
 impl_try_from_bytes!(DateTimeDue, DateOrDatetime, DateTimeParams);
 
 impl DateTimeDue {
+    /// The parsed `DUE` value — used by `build()` to cross-check its value
+    /// type (DATE vs DATE-TIME) against the component's `DTSTART` (RFC 5545
+    /// §3.8.2.3).
+    pub(crate) fn value(&self) -> &DateOrDatetime {
+        &self.value
+    }
+
     /// The `TZID` parameter, if present — used by the calendar-wide check
     /// that every referenced `TZID` matches a `VTIMEZONE` defined in the
     /// same `VCALENDAR` (RFC 5545 §3.6.5).

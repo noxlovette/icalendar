@@ -23,7 +23,7 @@ A few conventions came out of building it that future work on it MUST follow:
   `Xprop`/`Iana`.
 - Each component builder implements `PropertyIngest`
   (`fn ingest(&mut self, p: Property) -> ParseResult<()>`) and owns the
-  decision of what properties are legal for *it*. Neither the parser nor
+  decision of what properties are legal for _it_. Neither the parser nor
   `Component::ingest` inspects a property to decide legality — they just
   parse a `Property` and hand it to the builder, which matches it against
   its own RFC-defined property set and errors on anything else.
@@ -34,8 +34,8 @@ A few conventions came out of building it that future work on it MUST follow:
   `DAYLIGHT`) — that makes an illegal state representable. A sub-component
   gets its own builder type instead, referenced only as a field on whichever
   builder(s) may legally contain it (e.g. `EventBuilder.alarms:
-  Vec<AlarmBuilder>`, `TimezoneBuilder.standardc`/`daylightc:
-  Vec<TzPropBuilder>`).
+Vec<AlarmBuilder>`, `TimezoneBuilder.standardc`/`daylightc:
+Vec<TzPropBuilder>`).
 - A sub-component's own `Parser` method (`alarm()`, `tz_observance()`) is a
   sibling to `component()`, not a recursive call into it — each nested
   grammar production has its own alphabet of legal properties and its own
@@ -43,7 +43,7 @@ A few conventions came out of building it that future work on it MUST follow:
   worth it. When `component()`'s loop hits a nested `BEGIN`, it dispatches
   by peeking the sub-component's own name (same name-based dispatch as
   `Property::parse` and `component()`'s own top-level match). Whether that
-  name is legal *under this particular parent* is then decided by the
+  name is legal _under this particular parent_ is then decided by the
   parent's own `ingest_*` method (e.g. `Component::ingest_alarm` rejects a
   `VALARM` under anything but `VEVENT`/`VTODO`), not by the parser.
 - All validation happens at `build()`, not during ingest. Ingest only
@@ -63,7 +63,7 @@ A few conventions came out of building it that future work on it MUST follow:
   itself `pub`/`pub(crate)`. The accessor exposes exactly the one thing the
   check needs, so the property can't be constructed or mutated around its
   own invariants from elsewhere in the crate.
-- A check that spans more than one *component* (e.g. a `TZID` parameter
+- A check that spans more than one _component_ (e.g. a `TZID` parameter
   used on a `DTSTART` matching some `VTIMEZONE`'s `TZID` elsewhere in the
   same object; `UID`/`RECURRENCE-ID` uniqueness across components) can't
   live in any single builder's `build()` — it doesn't have the other

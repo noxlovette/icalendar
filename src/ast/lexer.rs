@@ -13,19 +13,24 @@ pub enum LexerError {
 }
 
 #[derive(Debug, Default)]
-pub struct Lexer<'a> {
-    source: &'a [u8],
+pub struct Lexer {
+    source: Vec<u8>,
     tokens: Vec<Token>,
     start: usize,
     current: usize,
     line: usize,
 }
 
-impl<'a> Lexer<'a> {
+impl Lexer {
     /// creates a new [Lexer] out of a source
-    pub fn new(src: &'a [u8]) -> Self {
+    ///
+    /// `src` is unfolded (RFC 5545 §3.1: CRLF followed by a single SPACE/HTAB
+    /// is a soft line break, not a real one) before scanning ever sees it, so
+    /// every downstream token position is a *logical* (post-unfolding)
+    /// content line rather than a raw physical one.
+    pub fn new(src: &[u8]) -> Self {
         Self {
-            source: src,
+            source: unfold::unfold(src),
             ..Default::default()
         }
     }
@@ -68,13 +73,18 @@ impl<'a> Lexer<'a> {
     /// remainder of the line ([`Self::property`]).
     fn line_content(&mut self) -> Result<(), LexerError> {
         self.name_chars();
-        let name = Self::fold_upper(&self.source[self.start..self.current]);
+        // Owned rather than the `Cow` `fold_upper` returns: it borrows
+        // `self.source`, and the match arms below need `&mut self`, which a
+        // live borrow of one of `self`'s fields would block.
+        let name =
+            Self::fold_upper(&self.source[self.start..self.current])
+                .into_owned();
 
-        match name.as_ref() {
+        match name.as_slice() {
             b"BEGIN" => self.component(TokenType::Begin),
             b"END" => self.component(TokenType::End),
             _ => {
-                self.property(name.as_ref());
+                self.property(&name);
                 Ok(())
             }
         }
@@ -146,7 +156,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// adds a new token to self
-    fn add_token(&mut self, tt: TokenType, lit: Option<&'a [u8]>) {
+    fn add_token(&mut self, tt: TokenType, lit: Option<&[u8]>) {
         let lex = &self.source[self.start..self.current];
         self.tokens.push(Token::new(tt, lex, lit, self.line));
     }

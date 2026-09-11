@@ -16,7 +16,7 @@ use crate::{
     },
     params::TimeZoneIdentifier as TzIdParam,
     properties::*,
-    values::DateOrDatetime,
+    values::{DateOrDatetime, DateTimePeriod},
 };
 use std::collections::HashSet;
 
@@ -217,6 +217,86 @@ fn check_until_matches_dtstart(
             "RRULE's UNTIL",
             "DTSTART",
         ))
+    }
+}
+
+/// RFC 5545 §3.8.2.2/§3.8.2.3: `DTEND`'s and `DUE`'s value type "MUST be the
+/// same value type as the 'DTSTART' property". Same shape as
+/// [`check_until_matches_dtstart`], generalized over which property is being
+/// compared to `DTSTART` (`name` is used only for the error message).
+fn check_value_type_matches_dtstart(
+    dtstart: Option<&DateTimeStart>,
+    other: Option<&DateOrDatetime>,
+    name: &'static str,
+) -> Result<(), ComponentError> {
+    let (Some(dtstart), Some(other)) = (dtstart, other) else {
+        return Ok(());
+    };
+    let matches_type = matches!(
+        (dtstart.value(), other),
+        (DateOrDatetime::Date(_), DateOrDatetime::Date(_))
+            | (DateOrDatetime::DateTime(_), DateOrDatetime::DateTime(_))
+    );
+    if matches_type {
+        Ok(())
+    } else {
+        Err(ComponentError::MismatchedValueType(name, "DTSTART"))
+    }
+}
+
+/// RFC 5545 §3.8.5.1: "The value type of this property MUST be the same as
+/// the value type of the 'DTSTART' property" — checked once per `EXDATE`
+/// value listed across every `EXDATE` property on the component (`EXDATE`
+/// takes a comma-separated list, and a component MAY repeat the property).
+fn check_exdate_matches_dtstart(
+    dtstart: Option<&DateTimeStart>,
+    exdate: &[ExceptionDateTimes],
+) -> Result<(), ComponentError> {
+    let Some(dtstart) = dtstart else { return Ok(()) };
+    let matches_type = exdate.iter().flat_map(ExceptionDateTimes::value).all(
+        |value| {
+            matches!(
+                (dtstart.value(), value),
+                (DateOrDatetime::Date(_), DateOrDatetime::Date(_))
+                    | (
+                        DateOrDatetime::DateTime(_),
+                        DateOrDatetime::DateTime(_)
+                    )
+            )
+        },
+    );
+    if matches_type {
+        Ok(())
+    } else {
+        Err(ComponentError::MismatchedValueType("EXDATE", "DTSTART"))
+    }
+}
+
+/// RFC 5545 §3.8.5.2: "The value type of the 'RDATE' property, if specified,
+/// MUST be the same as the 'DTSTART' property, or its value type must be
+/// PERIOD" — a `PERIOD` value is always allowed regardless of `DTSTART`'s
+/// value type, unlike `EXDATE`, which has no `PERIOD` alternative.
+fn check_rdate_matches_dtstart(
+    dtstart: Option<&DateTimeStart>,
+    rdate: &[RecurrenceDateTimes],
+) -> Result<(), ComponentError> {
+    let Some(dtstart) = dtstart else { return Ok(()) };
+    let matches_type =
+        rdate.iter().flat_map(RecurrenceDateTimes::value).all(|value| {
+            matches!(
+                (dtstart.value(), value),
+                (DateOrDatetime::Date(_), DateTimePeriod::Date(_))
+                    | (
+                        DateOrDatetime::DateTime(_),
+                        DateTimePeriod::DateTime(_)
+                    )
+                    | (_, DateTimePeriod::Period(_))
+            )
+        });
+    if matches_type {
+        Ok(())
+    } else {
+        Err(ComponentError::MismatchedValueType("RDATE", "DTSTART"))
     }
 }
 
@@ -915,6 +995,13 @@ impl EventBuilder {
             return Err(ComponentError::MutuallyExclusive("DTEND", "DURATION"));
         }
         check_until_matches_dtstart(self.dtstart.as_ref(), self.rrule.as_ref())?;
+        check_value_type_matches_dtstart(
+            self.dtstart.as_ref(),
+            self.dtend.as_ref().map(DateTimeEnd::value),
+            "DTEND",
+        )?;
+        check_exdate_matches_dtstart(self.dtstart.as_ref(), &self.exdate)?;
+        check_rdate_matches_dtstart(self.dtstart.as_ref(), &self.rdate)?;
         let alarms = self
             .alarms
             .into_iter()
@@ -1083,6 +1170,13 @@ impl TodoBuilder {
             return Err(ComponentError::Requires("DURATION", "DTSTART"));
         }
         check_until_matches_dtstart(self.dtstart.as_ref(), self.rrule.as_ref())?;
+        check_value_type_matches_dtstart(
+            self.dtstart.as_ref(),
+            self.due.as_ref().map(DateTimeDue::value),
+            "DUE",
+        )?;
+        check_exdate_matches_dtstart(self.dtstart.as_ref(), &self.exdate)?;
+        check_rdate_matches_dtstart(self.dtstart.as_ref(), &self.rdate)?;
         let alarms = self
             .alarms
             .into_iter()
@@ -1363,6 +1457,11 @@ impl FreeBusyBuilder {
     /// Validates the cross-field rules RFC 5545 §3.6.4 places on
     /// `VFREEBUSY` and assembles the finished [`FreeBusy`].
     fn build(self) -> Result<FreeBusy, ComponentError> {
+        check_value_type_matches_dtstart(
+            self.dtstart.as_ref(),
+            self.dtend.as_ref().map(DateTimeEnd::value),
+            "DTEND",
+        )?;
         Ok(FreeBusy {
             dtstamp: self
                 .dtstamp
@@ -1420,6 +1519,8 @@ impl JournalBuilder {
     /// `VJOURNAL` and assembles the finished [`Journal`].
     fn build(self) -> Result<Journal, ComponentError> {
         check_until_matches_dtstart(self.dtstart.as_ref(), self.rrule.as_ref())?;
+        check_exdate_matches_dtstart(self.dtstart.as_ref(), &self.exdate)?;
+        check_rdate_matches_dtstart(self.dtstart.as_ref(), &self.rdate)?;
         Ok(Journal {
             dtstamp: self
                 .dtstamp
@@ -1655,6 +1756,7 @@ impl TzPropBuilder {
     /// and assembles the finished [`TzProp`].
     fn build(self) -> Result<TzProp, ComponentError> {
         check_until_matches_dtstart(self.dtstart.as_ref(), self.rrule.as_ref())?;
+        check_rdate_matches_dtstart(self.dtstart.as_ref(), &self.rdate)?;
         Ok(TzProp {
             dtstart: self
                 .dtstart
@@ -1785,6 +1887,63 @@ mod build_tests {
         assert!(b.build(true).is_ok());
     }
 
+    #[test]
+    fn event_dtend_must_match_dtstart_value_type() {
+        // minimal_event's DTSTART is DATE-TIME; DTEND here is DATE.
+        let mut b = minimal_event();
+        b.ingest(prop(b"DTEND", b";VALUE=DATE:19971009")).unwrap();
+        assert!(matches!(
+            b.build(true),
+            Err(ComponentError::MismatchedValueType("DTEND", "DTSTART"))
+        ));
+    }
+
+    #[test]
+    fn event_dtend_matching_dtstart_value_type_is_ok() {
+        let mut b = minimal_event();
+        b.ingest(prop(b"DTEND", b":19970903T190000Z")).unwrap();
+        assert!(b.build(true).is_ok());
+    }
+
+    #[test]
+    fn event_exdate_must_match_dtstart_value_type() {
+        // minimal_event's DTSTART is DATE-TIME; EXDATE here is DATE.
+        let mut b = minimal_event();
+        b.ingest(prop(b"EXDATE", b";VALUE=DATE:19971009")).unwrap();
+        assert!(matches!(
+            b.build(true),
+            Err(ComponentError::MismatchedValueType("EXDATE", "DTSTART"))
+        ));
+    }
+
+    #[test]
+    fn event_exdate_matching_dtstart_value_type_is_ok() {
+        let mut b = minimal_event();
+        b.ingest(prop(b"EXDATE", b":19970904T163000Z,19970905T163000Z"))
+            .unwrap();
+        assert!(b.build(true).is_ok());
+    }
+
+    #[test]
+    fn event_rdate_must_match_dtstart_value_type() {
+        // minimal_event's DTSTART is DATE-TIME; RDATE here is DATE.
+        let mut b = minimal_event();
+        b.ingest(prop(b"RDATE", b";VALUE=DATE:19971009")).unwrap();
+        assert!(matches!(
+            b.build(true),
+            Err(ComponentError::MismatchedValueType("RDATE", "DTSTART"))
+        ));
+    }
+
+    #[test]
+    fn event_rdate_period_is_allowed_regardless_of_dtstart_value_type() {
+        // A PERIOD-valued RDATE is always allowed (RFC 5545 §3.8.5.2), even
+        // though minimal_event's DTSTART is DATE-TIME rather than DATE.
+        let mut b = minimal_event();
+        b.ingest(prop(b"RDATE", b":19970903T163000Z/PT2H")).unwrap();
+        assert!(b.build(true).is_ok());
+    }
+
     fn minimal_todo() -> TodoBuilder {
         let mut b = TodoBuilder::new();
         b.ingest(prop(b"DTSTAMP", b":19970901T130000Z")).unwrap();
@@ -1817,6 +1976,36 @@ mod build_tests {
     #[test]
     fn todo_builds_with_only_required_fields() {
         assert!(minimal_todo().build().is_ok());
+    }
+
+    #[test]
+    fn todo_due_must_match_dtstart_value_type() {
+        let mut b = minimal_todo();
+        b.ingest(prop(b"DTSTART", b";VALUE=DATE:20070430")).unwrap();
+        b.ingest(prop(b"DUE", b":20070501T000000Z")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(ComponentError::MismatchedValueType("DUE", "DTSTART"))
+        ));
+    }
+
+    #[test]
+    fn todo_due_matching_dtstart_value_type_is_ok() {
+        let mut b = minimal_todo();
+        b.ingest(prop(b"DTSTART", b";VALUE=DATE:20070430")).unwrap();
+        b.ingest(prop(b"DUE", b";VALUE=DATE:20070501")).unwrap();
+        assert!(b.build().is_ok());
+    }
+
+    #[test]
+    fn todo_exdate_and_rdate_must_match_dtstart_value_type() {
+        let mut b = minimal_todo();
+        b.ingest(prop(b"DTSTART", b";VALUE=DATE:20070430")).unwrap();
+        b.ingest(prop(b"EXDATE", b":20070501T000000Z")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(ComponentError::MismatchedValueType("EXDATE", "DTSTART"))
+        ));
     }
 
     fn minimal_alarm(action: &[u8]) -> AlarmBuilder {
@@ -1962,6 +2151,69 @@ mod build_tests {
                 "DTSTART"
             ))
         ));
+    }
+
+    #[test]
+    fn tz_prop_rdate_must_match_dtstart_value_type() {
+        // minimal_tz_prop's DTSTART is DATE-TIME; RDATE here is DATE.
+        let mut b = minimal_tz_prop();
+        b.ingest(prop(b"RDATE", b";VALUE=DATE:20070311")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(ComponentError::MismatchedValueType("RDATE", "DTSTART"))
+        ));
+    }
+
+    fn minimal_journal() -> JournalBuilder {
+        let mut b = JournalBuilder::new();
+        b.ingest(prop(b"DTSTAMP", b":19970901T130000Z")).unwrap();
+        b.ingest(prop(b"UID", b":123@example.com")).unwrap();
+        b.ingest(prop(b"DTSTART", b";VALUE=DATE:19970317")).unwrap();
+        b
+    }
+
+    #[test]
+    fn journal_exdate_must_match_dtstart_value_type() {
+        // minimal_journal's DTSTART is DATE; EXDATE here is DATE-TIME.
+        let mut b = minimal_journal();
+        b.ingest(prop(b"EXDATE", b":19970318T000000Z")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(ComponentError::MismatchedValueType("EXDATE", "DTSTART"))
+        ));
+    }
+
+    #[test]
+    fn journal_rdate_matching_dtstart_value_type_is_ok() {
+        let mut b = minimal_journal();
+        b.ingest(prop(b"RDATE", b";VALUE=DATE:19970318")).unwrap();
+        assert!(b.build().is_ok());
+    }
+
+    fn minimal_freebusy() -> FreeBusyBuilder {
+        let mut b = FreeBusyBuilder::new();
+        b.ingest(prop(b"DTSTAMP", b":19970901T083000Z")).unwrap();
+        b.ingest(prop(b"UID", b":123@example.com")).unwrap();
+        b.ingest(prop(b"DTSTART", b":19971015T050000Z")).unwrap();
+        b
+    }
+
+    #[test]
+    fn freebusy_dtend_must_match_dtstart_value_type() {
+        // minimal_freebusy's DTSTART is DATE-TIME; DTEND here is DATE.
+        let mut b = minimal_freebusy();
+        b.ingest(prop(b"DTEND", b";VALUE=DATE:19971016")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(ComponentError::MismatchedValueType("DTEND", "DTSTART"))
+        ));
+    }
+
+    #[test]
+    fn freebusy_dtend_matching_dtstart_value_type_is_ok() {
+        let mut b = minimal_freebusy();
+        b.ingest(prop(b"DTEND", b":19971016T050000Z")).unwrap();
+        assert!(b.build().is_ok());
     }
 
     #[test]

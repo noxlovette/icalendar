@@ -23,6 +23,13 @@ pub struct ExceptionDateTimes {
 impl_try_from_bytes_list!(ExceptionDateTimes, DateOrDatetime, ExDateParams);
 
 impl ExceptionDateTimes {
+    /// The parsed `EXDATE` values — used by `build()` to cross-check their
+    /// value type (DATE vs DATE-TIME) against the component's `DTSTART`
+    /// (RFC 5545 §3.8.5.1).
+    pub(crate) fn value(&self) -> &[DateOrDatetime] {
+        &self.value
+    }
+
     /// The `TZID` parameter, if present — used by the calendar-wide check
     /// that every referenced `TZID` matches a `VTIMEZONE` defined in the
     /// same `VCALENDAR` (RFC 5545 §3.6.5).
@@ -48,6 +55,13 @@ pub struct RecurrenceDateTimes {
 impl_try_from_bytes_list!(RecurrenceDateTimes, DateTimePeriod, RDateParams);
 
 impl RecurrenceDateTimes {
+    /// The parsed `RDATE` values — used by `build()` to cross-check their
+    /// value type (DATE vs DATE-TIME vs PERIOD) against the component's
+    /// `DTSTART` (RFC 5545 §3.8.5.2).
+    pub(crate) fn value(&self) -> &[DateTimePeriod] {
+        &self.value
+    }
+
     /// The `TZID` parameter, if present — used by the calendar-wide check
     /// that every referenced `TZID` matches a `VTIMEZONE` defined in the
     /// same `VCALENDAR` (RFC 5545 §3.6.5).

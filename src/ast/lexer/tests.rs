@@ -170,6 +170,46 @@ fn trailing_bare_cr_errors_gracefully_instead_of_panicking() {
 }
 
 #[test]
+fn folded_content_line_is_unfolded_before_scanning() {
+    // §3.1's own worked example: a folded content line must scan as the
+    // single logical property it represents, not three separate lines.
+    let tokens = lex(
+        b"DESCRIPTION:This is a lo\r\n ng description\r\n  that exists on a long line.\r\n",
+    )
+    .unwrap();
+    assert_tokens(
+        tokens,
+        vec![
+            Token::new(
+                TokenType::Property,
+                b"DESCRIPTION",
+                Some(
+                    b":This is a long description that exists on a long line.",
+                ),
+                0,
+            ),
+            Token::new(TokenType::Crlf, b"\r\n", None, 0),
+            Token::new(TokenType::Eof, b"", None, 1),
+        ],
+    );
+}
+
+#[test]
+fn fold_inside_a_begin_end_component_name_is_unfolded() {
+    // Folding can split any two characters, including mid-keyword — the
+    // lexer must see `VEVENT`, not `VE` followed by a bogus continuation.
+    let tokens = lex(b"BEGIN:VE\r\n VENT\r\n").unwrap();
+    assert_tokens(
+        tokens,
+        vec![
+            Token::new(TokenType::Begin, b"BEGIN", Some(b"VEVENT"), 0),
+            Token::new(TokenType::Crlf, b"\r\n", None, 0),
+            Token::new(TokenType::Eof, b"", None, 1),
+        ],
+    );
+}
+
+#[test]
 fn unknown_lexeme_at_start_of_line_errors() {
     let res = lex(b"!oops\r\n");
     assert!(matches!(
