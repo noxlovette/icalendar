@@ -6,6 +6,7 @@ description = "RFC 5545 in Rust"
 license = "Apache-2.0"
 edition = "2024"
 repository = "https://github.com/noxlovette/icalendar"
+exclude = ["tests/fixtures/**"]
 
 [dependencies]
 chrono = { version = "0.4.45" }
