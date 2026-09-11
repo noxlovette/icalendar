@@ -54,6 +54,24 @@ A few conventions came out of building it that future work on it MUST follow:
   present, a component needing at least one of some sub-component
   (`VTIMEZONE` needs ≥1 `STANDARD`/`DAYLIGHT`) — is deferred to `build()`,
   which runs once ingest has seen everything.
+- A cross-field check needs to read another property's already-parsed
+  value (e.g. `RRULE`'s `UNTIL` vs. the component's `DTSTART`; `ACTION`'s
+  kind vs. what `VALARM` requires). Properties keep `value`/`params`
+  private per the rule enforcement section above, so the check goes through
+  a small `pub(crate)` accessor method on the property type (`RRule::recur`,
+  `DateTimeStart::value`, `Action::kind`, ...) — never by making the field
+  itself `pub`/`pub(crate)`. The accessor exposes exactly the one thing the
+  check needs, so the property can't be constructed or mutated around its
+  own invariants from elsewhere in the crate.
+- A check that spans more than one *component* (e.g. a `TZID` parameter
+  used on a `DTSTART` matching some `VTIMEZONE`'s `TZID` elsewhere in the
+  same object; `UID`/`RECURRENCE-ID` uniqueness across components) can't
+  live in any single builder's `build()` — it doesn't have the other
+  components yet. These run once in `CalendarBuilder::build()`, as a free
+  function taking the already-built `&[calendar::Component]` slice, called
+  right after every individual component has been built (so per-component
+  rules have already run) and before `Calendar` is assembled. See
+  `validate_timezones`/`validate_no_duplicate_uid` in `src/ast.rs`.
 
 ## Testing philosophy
 

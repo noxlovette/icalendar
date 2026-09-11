@@ -29,7 +29,37 @@ pub struct Attachment {
     params: AttachmentParams,
 }
 
-impl_try_from_bytes!(Attachment, AttachmentValue, AttachmentParams);
+impl TryFrom<&[u8]> for Attachment {
+    type Error = crate::ast::parser::ParseError;
+
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        let colon = crate::properties::value_start(v)?;
+        let params = AttachmentParams::try_from(&v[..colon])?;
+        let value = AttachmentValue::try_from(&v[colon + 1..])?;
+
+        // ENCODING/VALUE select BASE64 inline content; anything else
+        // implies a URI. The value's shape was inferred without seeing
+        // these params (see `AttachmentValue::try_from`), so cross-check
+        // them now that both are available.
+        let declared_binary = matches!(params.encoding, Some(Encoding::Base64))
+            || matches!(params.value_data_type, Some(ValueDataType::Binary));
+        let declared_uri =
+            matches!(params.value_data_type, Some(ValueDataType::Uri));
+        let mismatch = match &value {
+            AttachmentValue::Uri(_) => declared_binary,
+            AttachmentValue::Binary(_) => declared_uri,
+        };
+        if mismatch {
+            return Err(ValueError::Malformed {
+                expected: "ATTACH value shape consistent with its ENCODING/VALUE params".into(),
+                received: std::str::from_utf8(&v[colon + 1..]).ok().map(Into::into),
+            }
+            .into());
+        }
+
+        Ok(Self { value, params })
+    }
+}
 
 #[derive(Debug)]
 enum AttachmentValue {
@@ -43,11 +73,12 @@ impl TryFrom<&[u8]> for AttachmentValue {
     type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
-        // RFC 5545 selects between these via the ENCODING/VALUE params,
-        // which aren't available at this parsing stage (the value is
-        // parsed before the params are). A valid URI always has a
-        // "scheme:" prefix that inline BASE64 content cannot produce
-        // (BASE64's alphabet has no ':'), so the shapes don't collide.
+        // RFC 5545 selects between these via the ENCODING/VALUE params, but
+        // this `TryFrom` only sees the value bytes — `Attachment::try_from`
+        // cross-checks the params against whichever shape is inferred here
+        // once both are available. A valid URI always has a "scheme:"
+        // prefix that inline BASE64 content cannot produce (BASE64's
+        // alphabet has no ':'), so the shapes don't collide.
         if let Ok(uri) = Uri::try_from(v) {
             Ok(Self::Uri(uri))
         } else {
@@ -506,6 +537,55 @@ mod tests {
             AttachmentValue::try_from(b"aGVsbG8=".as_slice()),
             Ok(AttachmentValue::Binary(_))
         ));
+    }
+
+    #[test]
+    fn attachment_rejects_encoding_base64_on_a_uri_shaped_value() {
+        assert!(
+            Attachment::try_from(
+                b";ENCODING=BASE64:ftp://example.com/pub/docs/agenda.doc"
+                    .as_slice()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn attachment_rejects_value_binary_on_a_uri_shaped_value() {
+        assert!(
+            Attachment::try_from(
+                b";VALUE=BINARY:ftp://example.com/pub/docs/agenda.doc"
+                    .as_slice()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn attachment_rejects_value_uri_on_a_binary_shaped_value() {
+        assert!(
+            Attachment::try_from(b";VALUE=URI:aGVsbG8=".as_slice()).is_err()
+        );
+    }
+
+    #[test]
+    fn attachment_accepts_consistent_binary_params() {
+        assert!(
+            Attachment::try_from(
+                b";ENCODING=BASE64;VALUE=BINARY:aGVsbG8=".as_slice()
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn attachment_accepts_a_plain_uri_with_no_params() {
+        assert!(
+            Attachment::try_from(
+                b":ftp://example.com/pub/docs/agenda.doc".as_slice()
+            )
+            .is_ok()
+        );
     }
 
     #[test]

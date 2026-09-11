@@ -22,6 +22,15 @@ pub struct TimeZoneIdentifier {
 
 impl_try_from_bytes!(TimeZoneIdentifier);
 
+impl TimeZoneIdentifier {
+    /// The `TZID` text — used by the calendar-wide check that every `TZID`
+    /// parameter used elsewhere in the `VCALENDAR` matches a `VTIMEZONE`
+    /// component defined by this property (RFC 5545 §3.6.5).
+    pub(crate) fn as_str(&self) -> &str {
+        &self.value
+    }
+}
+
 /// This property specifies the customary designation for a time zone
 /// description.
 ///

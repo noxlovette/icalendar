@@ -14,8 +14,11 @@ use crate::{
         timezone::{Timezone, TzProp},
         todo::Todo,
     },
+    params::TimeZoneIdentifier as TzIdParam,
     properties::*,
+    values::DateOrDatetime,
 };
+use std::collections::HashSet;
 
 /// Splits a Bytes vector by given pattern. Error-agnostic — callers map the
 /// `None` case to whichever error type fits their layer (`ValueError`,
@@ -186,6 +189,35 @@ fn set_once<T>(
     }
     *slot = Some(value);
     Ok(())
+}
+
+/// RFC 5545 §3.3.10: `RRULE`'s `UNTIL` rule part "MUST have the same value
+/// type as the 'DTSTART' property". Checked here, once both are known,
+/// rather than in `Recur::try_from` — which parses `RRULE` on its own and
+/// has no access to the sibling `DTSTART`.
+fn check_until_matches_dtstart(
+    dtstart: Option<&DateTimeStart>,
+    rrule: Option<&RRule>,
+) -> Result<(), ComponentError> {
+    let (Some(dtstart), Some(rrule)) = (dtstart, rrule) else {
+        return Ok(());
+    };
+    let Some(until) = rrule.recur().until() else {
+        return Ok(());
+    };
+    let matches_type = matches!(
+        (dtstart.value(), until),
+        (DateOrDatetime::Date(_), DateOrDatetime::Date(_))
+            | (DateOrDatetime::DateTime(_), DateOrDatetime::DateTime(_))
+    );
+    if matches_type {
+        Ok(())
+    } else {
+        Err(ComponentError::MismatchedValueType(
+            "RRULE's UNTIL",
+            "DTSTART",
+        ))
+    }
 }
 
 /// A calendar property, wrapping every property type defined in
@@ -656,6 +688,8 @@ impl CalendarBuilder {
             .into_iter()
             .map(|c| c.build(has_method))
             .collect::<Result<Vec<_>, _>>()?;
+        validate_timezones(&components)?;
+        validate_no_duplicate_uid(&components)?;
 
         Ok(Calendar {
             prodid,
@@ -667,6 +701,98 @@ impl CalendarBuilder {
             components,
         })
     }
+}
+
+/// RFC 5545 §3.6.5: "An individual 'VTIMEZONE' calendar component MUST be
+/// specified for each unique 'TZID' parameter value specified in the
+/// iCalendar object", and multiple `VTIMEZONE`s "MUST represent a unique
+/// time zone definition" each. Both halves are calendar-wide — the first
+/// needs every component's date/time properties, the second needs every
+/// `VTIMEZONE` — so this runs once in `CalendarBuilder::build`, after every
+/// component has already been individually validated and built.
+fn validate_timezones(components: &[CalComponent]) -> Result<(), ComponentError> {
+    let mut declared = HashSet::new();
+    for c in components {
+        if let CalComponent::Timezone(tz) = c {
+            let name = tz.tzid.as_str();
+            if !declared.insert(name) {
+                return Err(ComponentError::DuplicateTimeZone(name.into()));
+            }
+        }
+    }
+
+    let check = |tzid: Option<&TzIdParam>| -> Result<(), ComponentError> {
+        match tzid {
+            Some(tzid) if !declared.contains(tzid.name()) => Err(
+                ComponentError::UndeclaredTimeZone(tzid.name().into()),
+            ),
+            _ => Ok(()),
+        }
+    };
+
+    for c in components {
+        match c {
+            CalComponent::Event(e) => {
+                check(e.dtstart.as_ref().and_then(DateTimeStart::tzid))?;
+                check(e.dtend.as_ref().and_then(DateTimeEnd::tzid))?;
+                check(e.recurid.as_ref().and_then(RecurrenceId::tzid))?;
+                e.exdate.iter().try_for_each(|p| check(p.tzid()))?;
+                e.rdate.iter().try_for_each(|p| check(p.tzid()))?;
+            }
+            CalComponent::Todo(t) => {
+                check(t.dtstart.as_ref().and_then(DateTimeStart::tzid))?;
+                check(t.due.as_ref().and_then(DateTimeDue::tzid))?;
+                check(t.recur_id.as_ref().and_then(RecurrenceId::tzid))?;
+                t.exdate.iter().try_for_each(|p| check(p.tzid()))?;
+                t.rdate.iter().try_for_each(|p| check(p.tzid()))?;
+            }
+            CalComponent::Journal(j) => {
+                check(j.dtstart.as_ref().and_then(DateTimeStart::tzid))?;
+                check(j.recurid.as_ref().and_then(RecurrenceId::tzid))?;
+                j.exdate.iter().try_for_each(|p| check(p.tzid()))?;
+                j.rdate.iter().try_for_each(|p| check(p.tzid()))?;
+            }
+            CalComponent::FreeBusy(f) => {
+                check(f.dtstart.as_ref().and_then(DateTimeStart::tzid))?;
+                check(f.dtend.as_ref().and_then(DateTimeEnd::tzid))?;
+            }
+            CalComponent::Timezone(_) => {}
+        }
+    }
+    Ok(())
+}
+
+/// RFC 5545 doesn't require a `UID` to be unique within one `VCALENDAR` —
+/// a recurring master and its `RECURRENCE-ID`-bearing overrides
+/// legitimately share one. What can't happen is two components claiming
+/// the exact same instance: identical `UID` and identical (including both
+/// absent) `RECURRENCE-ID`. Only `VEVENT`/`VTODO`/`VJOURNAL` participate in
+/// this identity model; `VFREEBUSY`'s `UID` identifies a request/reply, not
+/// a recurring instance, so it's excluded.
+fn validate_no_duplicate_uid(
+    components: &[CalComponent],
+) -> Result<(), ComponentError> {
+    let mut seen: Vec<(&str, Option<&DateOrDatetime>)> = Vec::new();
+    for c in components {
+        let (uid, recurid) = match c {
+            CalComponent::Event(e) => {
+                (e.uid.as_str(), e.recurid.as_ref().map(RecurrenceId::value))
+            }
+            CalComponent::Todo(t) => (
+                t.uid.as_str(),
+                t.recur_id.as_ref().map(RecurrenceId::value),
+            ),
+            CalComponent::Journal(j) => {
+                (j.uid.as_str(), j.recurid.as_ref().map(RecurrenceId::value))
+            }
+            CalComponent::FreeBusy(_) | CalComponent::Timezone(_) => continue,
+        };
+        if seen.contains(&(uid, recurid)) {
+            return Err(ComponentError::DuplicateUid(uid.into()));
+        }
+        seen.push((uid, recurid));
+    }
+    Ok(())
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -700,6 +826,34 @@ pub enum ComponentError {
     /// showed up anyway (e.g. `ATTACH` in a `VALARM` with `ACTION:DISPLAY`).
     #[error("{0} MUST NOT be specified when {1}")]
     NotAllowed(&'static str, &'static str),
+
+    /// Two properties whose value types RFC 5545 requires to match (e.g.
+    /// `RRULE`'s `UNTIL` and the component's `DTSTART`) didn't.
+    #[error("{0}'s value type MUST match {1}'s (both DATE, or both DATE-TIME)")]
+    MismatchedValueType(&'static str, &'static str),
+
+    /// A `TZID` parameter was used somewhere in the `VCALENDAR` without a
+    /// matching `VTIMEZONE` component defining it (RFC 5545 §3.6.5).
+    #[error(
+        "TZID={0} is used but no VTIMEZONE component defines it in this VCALENDAR"
+    )]
+    UndeclaredTimeZone(String),
+
+    /// The same `TZID` was defined by more than one `VTIMEZONE` component in
+    /// one `VCALENDAR` (RFC 5545 §3.6.5: "an individual VTIMEZONE...MUST be
+    /// specified for each unique TZID").
+    #[error("TZID={0} is defined by more than one VTIMEZONE in this VCALENDAR")]
+    DuplicateTimeZone(String),
+
+    /// Two components in the same `VCALENDAR` share both `UID` and (absent
+    /// or identical) `RECURRENCE-ID` — RFC 5545 doesn't forbid reusing a
+    /// `UID` across a recurring master and its overrides, but two
+    /// components claiming the very same instance (or both claiming to be
+    /// the master) can't both be right.
+    #[error(
+        "UID={0} is shared by more than one component with the same RECURRENCE-ID"
+    )]
+    DuplicateUid(String),
 }
 
 #[derive(Debug, Default)]
@@ -760,6 +914,7 @@ impl EventBuilder {
         if self.dtend.is_some() && self.duration.is_some() {
             return Err(ComponentError::MutuallyExclusive("DTEND", "DURATION"));
         }
+        check_until_matches_dtstart(self.dtstart.as_ref(), self.rrule.as_ref())?;
         let alarms = self
             .alarms
             .into_iter()
@@ -927,6 +1082,7 @@ impl TodoBuilder {
         if self.duration.is_some() && self.dtstart.is_none() {
             return Err(ComponentError::Requires("DURATION", "DTSTART"));
         }
+        check_until_matches_dtstart(self.dtstart.as_ref(), self.rrule.as_ref())?;
         let alarms = self
             .alarms
             .into_iter()
@@ -1263,6 +1419,7 @@ impl JournalBuilder {
     /// Validates the cross-field rules RFC 5545 §3.6.3 places on
     /// `VJOURNAL` and assembles the finished [`Journal`].
     fn build(self) -> Result<Journal, ComponentError> {
+        check_until_matches_dtstart(self.dtstart.as_ref(), self.rrule.as_ref())?;
         Ok(Journal {
             dtstamp: self
                 .dtstamp
@@ -1497,6 +1654,7 @@ impl TzPropBuilder {
     /// Validates the `tzprop` grammar's required fields (RFC 5545 §3.6.5)
     /// and assembles the finished [`TzProp`].
     fn build(self) -> Result<TzProp, ComponentError> {
+        check_until_matches_dtstart(self.dtstart.as_ref(), self.rrule.as_ref())?;
         Ok(TzProp {
             dtstart: self
                 .dtstart
@@ -1603,6 +1761,28 @@ mod build_tests {
         let event = minimal_event().build(true).unwrap();
         assert!(event.dtstart.is_some());
         assert!(event.alarms.is_empty());
+    }
+
+    #[test]
+    fn event_rrule_until_must_match_dtstart_value_type() {
+        // minimal_event's DTSTART is DATE-TIME; UNTIL here is DATE.
+        let mut b = minimal_event();
+        b.ingest(prop(b"RRULE", b":FREQ=DAILY;UNTIL=19971224")).unwrap();
+        assert!(matches!(
+            b.build(true),
+            Err(ComponentError::MismatchedValueType(
+                "RRULE's UNTIL",
+                "DTSTART"
+            ))
+        ));
+    }
+
+    #[test]
+    fn event_rrule_until_matching_dtstart_value_type_is_ok() {
+        let mut b = minimal_event();
+        b.ingest(prop(b"RRULE", b":FREQ=DAILY;UNTIL=19971224T000000Z"))
+            .unwrap();
+        assert!(b.build(true).is_ok());
     }
 
     fn minimal_todo() -> TodoBuilder {
@@ -1771,6 +1951,20 @@ mod build_tests {
     }
 
     #[test]
+    fn tz_prop_rrule_until_must_match_dtstart_value_type() {
+        // minimal_tz_prop's DTSTART is DATE-TIME; UNTIL here is DATE.
+        let mut b = minimal_tz_prop();
+        b.ingest(prop(b"RRULE", b":FREQ=YEARLY;UNTIL=20070311")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(ComponentError::MismatchedValueType(
+                "RRULE's UNTIL",
+                "DTSTART"
+            ))
+        ));
+    }
+
+    #[test]
     fn calendar_requires_prodid_version_and_a_component() {
         assert!(matches!(
             CalendarBuilder::new().build(),
@@ -1807,5 +2001,91 @@ mod build_tests {
         complete.version = Some(Version::try_from(b":2.0".as_slice()).unwrap());
         complete.components.push(minimal_event().into());
         assert!(complete.build().is_ok());
+    }
+
+    fn minimal_calendar(components: Vec<Component>) -> CalendarBuilder {
+        let mut b = CalendarBuilder::new();
+        b.prodid = Some(
+            ProductIdentifier::try_from(b":-//example//EN".as_slice()).unwrap(),
+        );
+        b.version = Some(Version::try_from(b":2.0".as_slice()).unwrap());
+        b.components = components;
+        b
+    }
+
+    fn minimal_timezone(tzid: &[u8]) -> TimezoneBuilder {
+        let mut b = TimezoneBuilder::new();
+        b.ingest(prop(b"TZID", tzid)).unwrap();
+        b.standardc.push(minimal_tz_prop());
+        b
+    }
+
+    #[test]
+    fn calendar_rejects_a_tzid_reference_with_no_matching_vtimezone() {
+        let mut event = minimal_event();
+        event.dtstart = Some(
+            DateTimeStart::try_from(
+                b";TZID=America/New_York:19970903T163000".as_slice(),
+            )
+            .unwrap(),
+        );
+        let cal = minimal_calendar(vec![event.into()]);
+        assert!(matches!(
+            cal.build(),
+            Err(ComponentError::UndeclaredTimeZone(tz))
+                if tz == "America/New_York"
+        ));
+    }
+
+    #[test]
+    fn calendar_accepts_a_tzid_reference_backed_by_a_vtimezone() {
+        let mut event = minimal_event();
+        event.dtstart = Some(
+            DateTimeStart::try_from(
+                b";TZID=America/New_York:19970903T163000".as_slice(),
+            )
+            .unwrap(),
+        );
+        let cal = minimal_calendar(vec![
+            event.into(),
+            minimal_timezone(b":America/New_York").into(),
+        ]);
+        assert!(cal.build().is_ok());
+    }
+
+    #[test]
+    fn calendar_rejects_the_same_tzid_defined_by_two_vtimezones() {
+        let cal = minimal_calendar(vec![
+            minimal_event().into(),
+            minimal_timezone(b":America/New_York").into(),
+            minimal_timezone(b":America/New_York").into(),
+        ]);
+        assert!(matches!(
+            cal.build(),
+            Err(ComponentError::DuplicateTimeZone(tz))
+                if tz == "America/New_York"
+        ));
+    }
+
+    #[test]
+    fn calendar_rejects_two_components_sharing_uid_and_no_recurrence_id() {
+        let cal =
+            minimal_calendar(vec![minimal_event().into(), minimal_event().into()]);
+        assert!(matches!(
+            cal.build(),
+            Err(ComponentError::DuplicateUid(uid))
+                if uid == "123@example.com"
+        ));
+    }
+
+    #[test]
+    fn calendar_allows_shared_uid_with_distinct_recurrence_ids() {
+        let mut overridden = minimal_event();
+        overridden
+            .ingest(prop(b"RECURRENCE-ID", b":19970904T163000Z"))
+            .unwrap();
+        let cal =
+            minimal_calendar(vec![minimal_event().into(), overridden.into()]);
+        assert!(cal.build().is_ok());
     }
 }

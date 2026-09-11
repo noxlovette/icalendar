@@ -152,6 +152,22 @@ pub struct RecurrenceId {
 
 impl_try_from_bytes!(RecurrenceId, DateOrDatetime, RecurrenceParams);
 
+impl RecurrenceId {
+    /// The parsed `RECURRENCE-ID` value — used by the calendar-wide check
+    /// that flags two components sharing the same `UID` and `RECURRENCE-ID`
+    /// (RFC 5545 §3.8.4.4).
+    pub(crate) fn value(&self) -> &DateOrDatetime {
+        &self.value
+    }
+
+    /// The `TZID` parameter, if present — used by the calendar-wide check
+    /// that every referenced `TZID` matches a `VTIMEZONE` defined in the
+    /// same `VCALENDAR` (RFC 5545 §3.6.5).
+    pub(crate) fn tzid(&self) -> Option<&TimeZoneIdentifier> {
+        self.params.tzid.as_ref()
+    }
+}
+
 /// Parameter bundle for [`RecurrenceId`].
 #[derive(Debug, Default)]
 struct RecurrenceParams {
@@ -259,3 +275,11 @@ pub struct Uid {
 }
 
 impl_try_from_bytes!(Uid);
+
+impl Uid {
+    /// The `UID` text — used by the calendar-wide check that flags two
+    /// components sharing the same `UID` and `RECURRENCE-ID`.
+    pub(crate) fn as_str(&self) -> &str {
+        &self.value
+    }
+}

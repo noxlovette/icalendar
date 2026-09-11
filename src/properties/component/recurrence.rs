@@ -22,6 +22,15 @@ pub struct ExceptionDateTimes {
 
 impl_try_from_bytes_list!(ExceptionDateTimes, DateOrDatetime, ExDateParams);
 
+impl ExceptionDateTimes {
+    /// The `TZID` parameter, if present — used by the calendar-wide check
+    /// that every referenced `TZID` matches a `VTIMEZONE` defined in the
+    /// same `VCALENDAR` (RFC 5545 §3.6.5).
+    pub(crate) fn tzid(&self) -> Option<&TimeZoneIdentifier> {
+        self.params.tzid.as_ref()
+    }
+}
+
 /// This property defines the list of DATE-TIME values for recurring events,
 /// to-dos, journal entries, or time zone definitions.
 ///
@@ -38,6 +47,15 @@ pub struct RecurrenceDateTimes {
 
 impl_try_from_bytes_list!(RecurrenceDateTimes, DateTimePeriod, RDateParams);
 
+impl RecurrenceDateTimes {
+    /// The `TZID` parameter, if present — used by the calendar-wide check
+    /// that every referenced `TZID` matches a `VTIMEZONE` defined in the
+    /// same `VCALENDAR` (RFC 5545 §3.6.5).
+    pub(crate) fn tzid(&self) -> Option<&TimeZoneIdentifier> {
+        self.params.tzid.as_ref()
+    }
+}
+
 /// This property defines a rule or repeating pattern for recurring events,
 /// to-dos, journal entries, or time zone definitions.
 ///
@@ -53,6 +71,14 @@ pub struct RRule {
 }
 
 impl_try_from_bytes!(RRule, Recur);
+
+impl RRule {
+    /// The parsed `RECUR` value — used by component builders to cross-check
+    /// `UNTIL` against the enclosing property's `DTSTART` (RFC 5545 §3.3.10).
+    pub(crate) fn recur(&self) -> &Recur {
+        &self.value
+    }
+}
 
 /// Parameter bundle for [`ExceptionDateTimes`].
 #[derive(Debug, Default)]

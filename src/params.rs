@@ -843,6 +843,16 @@ impl TryFrom<&[u8]> for TimeZoneIdentifier {
     }
 }
 
+impl TimeZoneIdentifier {
+    /// The canonical IANA name (e.g. `"America/New_York"`) — used by the
+    /// calendar-wide check that every `TZID` parameter matches a
+    /// `VTIMEZONE` component defined in the same `VCALENDAR` (RFC 5545
+    /// §3.6.5).
+    pub(crate) fn name(&self) -> &'static str {
+        self.0.name()
+    }
+}
+
 impl TryFrom<&[u8]> for RelationshipType {
     type Error = ParamError;
 

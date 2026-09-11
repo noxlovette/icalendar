@@ -71,6 +71,15 @@ pub struct DateTimeEnd {
 
 impl_try_from_bytes!(DateTimeEnd, DateOrDatetime, DateTimeParams);
 
+impl DateTimeEnd {
+    /// The `TZID` parameter, if present — used by the calendar-wide check
+    /// that every referenced `TZID` matches a `VTIMEZONE` defined in the
+    /// same `VCALENDAR` (RFC 5545 §3.6.5).
+    pub(crate) fn tzid(&self) -> Option<&TimeZoneIdentifier> {
+        self.params.tz_identifier.as_ref()
+    }
+}
+
 /// This property defines the date and time that a to-do is expected to be
 /// completed.
 ///
@@ -87,6 +96,15 @@ pub struct DateTimeDue {
 
 impl_try_from_bytes!(DateTimeDue, DateOrDatetime, DateTimeParams);
 
+impl DateTimeDue {
+    /// The `TZID` parameter, if present — used by the calendar-wide check
+    /// that every referenced `TZID` matches a `VTIMEZONE` defined in the
+    /// same `VCALENDAR` (RFC 5545 §3.6.5).
+    pub(crate) fn tzid(&self) -> Option<&TimeZoneIdentifier> {
+        self.params.tz_identifier.as_ref()
+    }
+}
+
 /// This property specifies when the calendar component begins.
 ///
 /// Example:
@@ -101,6 +119,22 @@ pub struct DateTimeStart {
 }
 
 impl_try_from_bytes!(DateTimeStart, DateOrDatetime, DateTimeParams);
+
+impl DateTimeStart {
+    /// The parsed `DTSTART` value — used by component builders to
+    /// cross-check its value type (DATE vs DATE-TIME) against a sibling
+    /// `RRULE`'s `UNTIL` (RFC 5545 §3.3.10).
+    pub(crate) fn value(&self) -> &DateOrDatetime {
+        &self.value
+    }
+
+    /// The `TZID` parameter, if present — used by the calendar-wide check
+    /// that every referenced `TZID` matches a `VTIMEZONE` defined in the
+    /// same `VCALENDAR` (RFC 5545 §3.6.5).
+    pub(crate) fn tzid(&self) -> Option<&TimeZoneIdentifier> {
+        self.params.tz_identifier.as_ref()
+    }
+}
 
 /// This property specifies a positive duration of time.
 ///

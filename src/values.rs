@@ -14,7 +14,7 @@ use thiserror::Error;
 use url::Url;
 pub mod datetime;
 /// The RFC 5545's helper
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DateOrDatetime {
     /// A calendar date without a time component.
     Date(Date),
@@ -300,7 +300,7 @@ impl TryFrom<&[u8]> for Duration {
 /// > reference
 ///
 /// [Section 3.3.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.5)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DateTime(ChronoDateTime<Utc>);
 
 impl Deref for DateTime {
@@ -345,7 +345,7 @@ impl TryFrom<&[u8]> for DateTime {
 /// > 19970714
 ///
 /// [Section 3.3.4](https://datatracker.ietf.org/doc/html/rfc5545#section-3.3.4)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Date(NaiveDate);
 
 impl Deref for Date {
@@ -970,6 +970,15 @@ mod recurrence {
         /// significant when in a YEARLY "RRULE" when a BYWEEKNO rule
         /// part is specified. The default value is MO.
         wkst: Option<Weekday>,
+    }
+
+    impl Recur {
+        /// The `UNTIL` rule part, if present — used by component builders to
+        /// cross-check its value type (DATE vs DATE-TIME) against the
+        /// enclosing property's `DTSTART` (RFC 5545 §3.3.10).
+        pub(crate) fn until(&self) -> Option<&DateOrDatetime> {
+            self.until.as_ref()
+        }
     }
 
     /// The FREQ rule part identifies the type of recurrence rule. This
