@@ -1,6 +1,5 @@
 use crate::{
-    ast::{parser::ParseError, split_once},
-    components::todo,
+    ast::split_once,
     params::TimeZoneIdentifier,
     values::datetime::{ICAL_DATE_FMT, ICAL_DATETIME_FMT},
 };
@@ -9,9 +8,9 @@ use chrono::{
     DateTime as ChronoDateTime, Duration as ChronoDuration, FixedOffset, Local,
     NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc,
 };
-use chrono_tz::Tz;
 pub use recurrence::Recur;
 use std::{ops::Deref, str::from_utf8};
+use thiserror::Error;
 use url::Url;
 pub mod datetime;
 /// The RFC 5545's helper
@@ -24,7 +23,7 @@ pub enum DateOrDatetime {
 }
 
 impl TryFrom<&[u8]> for DateOrDatetime {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         // DATE is 8 digits (YYYYMMDD); DATE-TIME always contains the "T"
@@ -50,7 +49,7 @@ pub enum DateTimePeriod {
 }
 
 impl TryFrom<&[u8]> for DateTimePeriod {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         // PERIOD always contains a "/" separator; DATE-TIME contains "T";
@@ -76,7 +75,7 @@ pub enum DateTimeDuration {
 }
 
 impl TryFrom<&[u8]> for DateTimeDuration {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         if is_duration_shaped(v) {
@@ -130,7 +129,7 @@ impl Deref for Duration {
 }
 
 impl TryFrom<&[u8]> for Duration {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let str = from_utf8(v)?;
@@ -138,11 +137,11 @@ impl TryFrom<&[u8]> for Duration {
             Some(rest) => (true, rest),
             None => (false, str.strip_prefix('+').unwrap_or(str)),
         };
-        let str = str.strip_prefix('P').ok_or(ParseError::Duration)?;
+        let str = str.strip_prefix('P').ok_or(ValueError::Duration)?;
 
         let total = if let Some(weeks) = str.strip_suffix('W') {
             ChronoDuration::weeks(
-                weeks.parse().map_err(|_| ParseError::Duration)?,
+                weeks.parse().map_err(|_| ValueError::Duration)?,
             )
         } else {
             let (date_part, time_part) = match str.split_once('T') {
@@ -154,12 +153,12 @@ impl TryFrom<&[u8]> for Duration {
             let mut rest = date_part;
             if let Some(idx) = rest.find('D') {
                 total += ChronoDuration::days(
-                    rest[..idx].parse().map_err(|_| ParseError::Duration)?,
+                    rest[..idx].parse().map_err(|_| ValueError::Duration)?,
                 );
                 rest = &rest[idx + 1..];
             }
             if !rest.is_empty() {
-                return Err(ParseError::Duration);
+                return Err(ValueError::Duration);
             }
 
             if let Some(mut rest) = time_part {
@@ -167,7 +166,7 @@ impl TryFrom<&[u8]> for Duration {
                     total += ChronoDuration::hours(
                         rest[..idx]
                             .parse()
-                            .map_err(|_| ParseError::Duration)?,
+                            .map_err(|_| ValueError::Duration)?,
                     );
                     rest = &rest[idx + 1..];
                 }
@@ -175,7 +174,7 @@ impl TryFrom<&[u8]> for Duration {
                     total += ChronoDuration::minutes(
                         rest[..idx]
                             .parse()
-                            .map_err(|_| ParseError::Duration)?,
+                            .map_err(|_| ValueError::Duration)?,
                     );
                     rest = &rest[idx + 1..];
                 }
@@ -183,12 +182,12 @@ impl TryFrom<&[u8]> for Duration {
                     total += ChronoDuration::seconds(
                         rest[..idx]
                             .parse()
-                            .map_err(|_| ParseError::Duration)?,
+                            .map_err(|_| ValueError::Duration)?,
                     );
                     rest = &rest[idx + 1..];
                 }
                 if !rest.is_empty() {
-                    return Err(ParseError::Duration);
+                    return Err(ValueError::Duration);
                 }
             }
 
@@ -313,7 +312,7 @@ impl Deref for DateTime {
 }
 
 impl TryFrom<&[u8]> for DateTime {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let str = from_utf8(v)?;
@@ -327,7 +326,7 @@ impl TryFrom<&[u8]> for DateTime {
         let local = naive
             .and_local_timezone(Local)
             .single()
-            .ok_or(ParseError::AmbiguousLocalTime)?;
+            .ok_or(ValueError::AmbiguousLocalTime)?;
 
         Ok(Self(local.to_utc()))
     }
@@ -358,7 +357,7 @@ impl Deref for Date {
 }
 
 impl TryFrom<&[u8]> for Date {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let str = from_utf8(v)?;
@@ -394,38 +393,38 @@ impl Deref for UtcOffset {
 }
 
 impl TryFrom<&[u8]> for UtcOffset {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let str = from_utf8(v)?;
         let (sign, rest) = match str.as_bytes().first() {
             Some(b'+') => (1, &str[1..]),
             Some(b'-') => (-1, &str[1..]),
-            _ => return Err(ParseError::UtcOffset),
+            _ => return Err(ValueError::UtcOffset),
         };
         if rest.len() != 4 && rest.len() != 6 {
-            return Err(ParseError::UtcOffset);
+            return Err(ValueError::UtcOffset);
         }
         if !rest.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(ParseError::UtcOffset);
+            return Err(ValueError::UtcOffset);
         }
         let hour: i32 =
-            rest[0..2].parse().map_err(|_| ParseError::UtcOffset)?;
+            rest[0..2].parse().map_err(|_| ValueError::UtcOffset)?;
         let minute: i32 =
-            rest[2..4].parse().map_err(|_| ParseError::UtcOffset)?;
+            rest[2..4].parse().map_err(|_| ValueError::UtcOffset)?;
         let second: i32 = if rest.len() == 6 {
-            rest[4..6].parse().map_err(|_| ParseError::UtcOffset)?
+            rest[4..6].parse().map_err(|_| ValueError::UtcOffset)?
         } else {
             0
         };
         let total = sign * (hour * 3600 + minute * 60 + second);
         // "-0000" and "-000000" are not allowed.
         if sign == -1 && total == 0 {
-            return Err(ParseError::UtcOffset);
+            return Err(ValueError::UtcOffset);
         }
         FixedOffset::east_opt(total)
             .map(Self)
-            .ok_or(ParseError::UtcOffset)
+            .ok_or(ValueError::UtcOffset)
     }
 }
 
@@ -463,10 +462,14 @@ pub enum Period {
 }
 
 impl TryFrom<&[u8]> for Period {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
-        let (start_b, rest) = split_once(v, b'/')?;
+        let (start_b, rest) =
+            split_once(v, b'/').ok_or_else(|| ValueError::Malformed {
+                expected: "start/end or start/duration".into(),
+                received: std::str::from_utf8(v).ok().map(Into::into),
+            })?;
         let start = DateTime::try_from(start_b)?;
 
         if is_duration_shaped(rest) {
@@ -618,7 +621,7 @@ impl Deref for Binary {
 }
 
 impl TryFrom<&[u8]> for Binary {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(base64::engine::general_purpose::STANDARD.decode(v)?))
@@ -712,7 +715,7 @@ impl Deref for Integer {
 }
 
 impl TryFrom<&[u8]> for Integer {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(from_utf8(v)?.parse()?))
@@ -735,7 +738,7 @@ impl Deref for Float {
 }
 
 impl TryFrom<&[u8]> for Float {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(from_utf8(v)?.parse()?))
@@ -757,8 +760,9 @@ impl TryFrom<&[u8]> for Float {
 pub struct CalendarUserAddress(Uri);
 
 mod recurrence {
+    use crate::{params::ParamError, values::ValueError};
+
     use super::DateOrDatetime;
-    use crate::ast::parser::ParseError;
     use std::str::from_utf8;
 
     /// Enforces 0 to 60
@@ -995,16 +999,16 @@ mod recurrence {
         Yearly,
     }
 
-    /// Builds a [`ParseError::Parameter`] for a malformed `RECUR` sub-part.
-    fn recur_err(expected: &str, received: &str) -> ParseError {
-        ParseError::Parameter {
+    /// Builds a [`ValueError::Malformed`] for a malformed `RECUR` sub-part.
+    fn recur_err(expected: &str, received: &str) -> ValueError {
+        ValueError::Malformed {
             expected: expected.into(),
             received: Some(received.into()),
         }
     }
 
     impl TryFrom<&[u8]> for Frequency {
-        type Error = ParseError;
+        type Error = ParamError;
 
         fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
             let r = match v {
@@ -1016,9 +1020,10 @@ mod recurrence {
                 b"MONTHLY" => Self::Monthly,
                 b"YEARLY" => Self::Yearly,
                 x => {
-                    return Err(recur_err(
-                        "FREQ",
-                        from_utf8(x).unwrap_or("<invalid utf8>"),
+                    return Err(ParamError::InvalidFreq(
+                        from_utf8(x)
+                            .unwrap_or("<invalid utf8>")
+                            .to_ascii_uppercase(),
                     ));
                 }
             };
@@ -1027,7 +1032,7 @@ mod recurrence {
     }
 
     impl TryFrom<&str> for Weekday {
-        type Error = ParseError;
+        type Error = ParamError;
 
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             let r = match s {
@@ -1038,7 +1043,7 @@ mod recurrence {
                 "TH" => Self::Th,
                 "FR" => Self::Fr,
                 "SA" => Self::Sa,
-                _ => return Err(recur_err("weekday", s)),
+                _ => return Err(ParamError::InvalidWeekday(s.into())),
             };
             Ok(r)
         }
@@ -1046,20 +1051,23 @@ mod recurrence {
 
     /// Parses a `weekdaynum` (e.g. `"MO"`, `"+1MO"`, `"-1SU"`): an optional
     /// signed ordinal followed by a two-letter weekday code.
-    fn parse_weekday_num(tok: &str) -> Result<WeekdayNum, ParseError> {
+    fn parse_weekday_num(tok: &str) -> Result<WeekdayNum, ValueError> {
         if tok.len() < 2 {
             return Err(recur_err("BYDAY", tok));
         }
         let (ord_part, day_part) = tok.split_at(tok.len() - 2);
-        let weekday = Weekday::try_from(day_part)?;
+        let weekday =
+            Weekday::try_from(day_part).map_err(|_| recur_err("BYDAY", tok))?;
         let ordinal = if ord_part.is_empty() {
             None
         } else {
-            Some(
-                ord_part
-                    .parse::<i8>()
-                    .map_err(|_| recur_err("BYDAY ordinal", ord_part))?,
-            )
+            let num = ord_part
+                .parse::<i8>()
+                .map_err(|_| recur_err("BYDAY ordinal", ord_part))?;
+            if num == 0 || num.unsigned_abs() > 53 {
+                return Err(recur_err("BYDAY ordinal", ord_part));
+            }
+            Some(num)
         };
         Ok(WeekdayNum { ordinal, weekday })
     }
@@ -1073,7 +1081,7 @@ mod recurrence {
         min: i32,
         max: i32,
         wrap: impl Fn(N) -> S,
-    ) -> Result<S, ParseError>
+    ) -> Result<S, ValueError>
     where
         N: TryFrom<i32>,
     {
@@ -1086,28 +1094,28 @@ mod recurrence {
     }
 
     impl TryFrom<&str> for Seconds {
-        type Error = ParseError;
+        type Error = ValueError;
 
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYSECOND", s, 0, 60, Self)
         }
     }
     impl TryFrom<&str> for Minutes {
-        type Error = ParseError;
+        type Error = ValueError;
 
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYMINUTE", s, 0, 59, Self)
         }
     }
     impl TryFrom<&str> for Hour {
-        type Error = ParseError;
+        type Error = ValueError;
 
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYHOUR", s, 0, 23, Self)
         }
     }
     impl TryFrom<&str> for WeekNum {
-        type Error = ParseError;
+        type Error = ValueError;
 
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYWEEKNO", s, -53, 53, Self).and_then(
@@ -1122,14 +1130,14 @@ mod recurrence {
         }
     }
     impl TryFrom<&str> for MonthNum {
-        type Error = ParseError;
+        type Error = ValueError;
 
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYMONTH", s, 1, 12, Self)
         }
     }
     impl TryFrom<&str> for MonthDayNum {
-        type Error = ParseError;
+        type Error = ValueError;
 
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYMONTHDAY", s, -31, 31, Self).and_then(
@@ -1144,7 +1152,7 @@ mod recurrence {
         }
     }
     impl TryFrom<&str> for YearDayNum {
-        type Error = ParseError;
+        type Error = ValueError;
 
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYYEARDAY", s, -366, 366, Self).and_then(
@@ -1168,7 +1176,7 @@ mod recurrence {
     }
 
     impl TryFrom<&[u8]> for Recur {
-        type Error = ParseError;
+        type Error = ValueError;
 
         fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
             let s = from_utf8(v)?;
@@ -1182,7 +1190,10 @@ mod recurrence {
 
                 match name.to_ascii_uppercase().as_str() {
                     "FREQ" => {
-                        recur.freq = value.as_bytes().try_into()?;
+                        recur.freq = value
+                            .as_bytes()
+                            .try_into()
+                            .map_err(|_| recur_err("FREQ", value))?;
                         freq_seen = true;
                     }
                     "UNTIL" => {
@@ -1235,7 +1246,10 @@ mod recurrence {
                             parse_list(value, |s| YearDayNum::try_from(s))?;
                     }
                     "WKST" => {
-                        recur.wkst = Some(Weekday::try_from(value)?);
+                        recur.wkst = Some(
+                            Weekday::try_from(value)
+                                .map_err(|_| recur_err("WKST", value))?,
+                        );
                     }
                     _ => return Err(recur_err("recur-rule-part", name)),
                 }
@@ -1270,10 +1284,10 @@ impl From<&str> for Text {
     }
 }
 impl TryFrom<&[u8]> for MediaType {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let (t, s) = split_once(value, b'/')?;
+        let (t, s) = split_once(value, b'/').ok_or(ValueError::MediaType)?;
         Ok(Self {
             media_type: t.try_into()?,
             subtype: s.try_into()?,
@@ -1282,7 +1296,7 @@ impl TryFrom<&[u8]> for MediaType {
 }
 
 impl TryFrom<&[u8]> for Text {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         Ok(std::str::from_utf8(value)?.into())
@@ -1290,7 +1304,7 @@ impl TryFrom<&[u8]> for Text {
 }
 
 impl TryFrom<&[u8]> for Uri {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(url::Url::parse(str::from_utf8(value)?)?))
@@ -1298,12 +1312,12 @@ impl TryFrom<&[u8]> for Uri {
 }
 
 impl TryFrom<&[u8]> for CalendarUserAddress {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let uri: Uri = value.try_into()?;
         if uri.scheme() != "mailto" {
-            Err(ParseError::CalUserAddress)
+            Err(ValueError::CalUserAddress)
         } else {
             Ok(Self(uri))
         }
@@ -1335,17 +1349,78 @@ impl Deref for Boolean {
 }
 
 impl TryFrom<&[u8]> for Boolean {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let r = match value {
             b"TRUE" => Self(true),
             b"FALSE" => Self(false),
-            _ => return Err(ParseError::Boolean),
+            _ => return Err(ValueError::Boolean),
         };
 
         Ok(r)
     }
+}
+
+#[derive(Debug, Error)]
+pub enum ValueError {
+    /// [CalendarUserAddress] Parsing Error
+    #[error("Malformed CalenderUserAddress")]
+    CalUserAddress,
+
+    /// [MediaType] Parsing Error
+    #[error("Malformed MediaType")]
+    MediaType,
+
+    #[error("Malformed Boolean")]
+    Boolean,
+
+    /// \[[Integer](crate::values::Integer)\] parsing error
+    #[error(transparent)]
+    Integer(#[from] std::num::ParseIntError),
+
+    /// \[[Float](crate::values::Float)\] parsing error
+    #[error(transparent)]
+    Float(#[from] std::num::ParseFloatError),
+
+    /// URL parsing error
+    #[error(transparent)]
+    URL(#[from] url::ParseError),
+
+    /// \[[UtcOffset](crate::values::UtcOffset)\] parsing error
+    #[error("Malformed UTC offset")]
+    UtcOffset,
+
+    /// \[[Duration](crate::values::Duration)\] parsing error
+    #[error("Malformed Duration")]
+    Duration,
+
+    /// \[[Binary](crate::values::Binary)\] decoding error
+    #[error(transparent)]
+    Base64(#[from] base64::DecodeError),
+
+    /// Encoding error surfaced while decoding a value's raw bytes as UTF-8.
+    #[error(transparent)]
+    Utf8(#[from] std::str::Utf8Error),
+
+    /// Shared by every value type backed by a `chrono` parser (`DATE`,
+    /// `DATE-TIME`).
+    #[error(transparent)]
+    ChronoParse(#[from] chrono::ParseError),
+
+    /// The local time supplied did not yield a single time instance.
+    #[error("The local time supplied did not yield a single time instance")]
+    AmbiguousLocalTime,
+
+    /// Catch-all for a value (or value sub-part, e.g. a `RECUR` rule-part)
+    /// that doesn't match its expected shape.
+    #[error("Value parsing failed. Expected {expected}, got {received:?}")]
+    Malformed {
+        /// What the value is supposed to be
+        expected: String,
+        /// What we actually received
+        received: Option<String>,
+    },
 }
 
 #[cfg(test)]

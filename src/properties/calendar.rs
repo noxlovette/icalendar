@@ -1,6 +1,6 @@
 use memchr::memchr;
 
-use crate::{ast::parser::ParseError, properties::SharedParams, values::Text};
+use crate::{properties::SharedParams, values::Text};
 
 /// This property defines the calendar scale used for the calendar information
 /// specified in the iCalendar object.  This memo is based on the Gregorian

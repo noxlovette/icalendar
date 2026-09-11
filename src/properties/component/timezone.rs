@@ -1,7 +1,8 @@
 use crate::{
-    ast::{parser::ParseError, split_once},
     params::Language,
-    properties::{SharedParams, param_name, param_segments},
+    properties::{
+        ParameterError, SharedParams, param_name, param_segments, param_value,
+    },
     values::{Text, Uri, UtcOffset},
 };
 
@@ -46,15 +47,14 @@ struct TZNameParams {
 }
 
 impl TryFrom<&[u8]> for TZNameParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"LANGUAGE" => {
-                    params.language =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.language = Some(param_value(segment)?.try_into()?)
                 }
                 _ => params.shared.absorb(segment)?,
             }

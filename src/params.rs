@@ -1,13 +1,18 @@
 pub use crate::values::Recur;
 use crate::{
-    ast::{
-        parser::{ParseError, ParseResult},
-        split_once, strip_quoted_string,
-    },
-    values::{Boolean, CalendarUserAddress, MediaType, Text, Uri},
+    ast::{split_once, strip_quoted_string},
+    properties::ParameterError,
+    values::{Boolean, CalendarUserAddress, MediaType, Text, Uri, ValueError},
 };
 use chrono_tz::Tz;
 use std::fmt::Debug;
+use thiserror::Error;
+
+/// [`strip_quoted_string`], erroring with [`ParamError::QuotedString`] if
+/// `v` isn't a quoted-string.
+fn quoted(v: &[u8]) -> Result<&[u8], ParamError> {
+    strip_quoted_string(v).ok_or(ParamError::QuotedString)
+}
 
 /// Explicit value type for a property, as carried by the `VALUE` parameter.
 ///
@@ -59,7 +64,7 @@ pub enum ValueDataType {
 }
 
 impl TryFrom<&[u8]> for ValueDataType {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let r = match b {
@@ -105,10 +110,10 @@ impl TryFrom<&[u8]> for ValueDataType {
 pub struct Altrep(Uri);
 
 impl TryFrom<&[u8]> for Altrep {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self(strip_quoted_string(b)?.try_into()?))
+        Ok(Self(quoted(b)?.try_into()?))
     }
 }
 
@@ -128,10 +133,10 @@ impl TryFrom<&[u8]> for Altrep {
 pub struct CommonName(Text);
 
 impl TryFrom<&[u8]> for CommonName {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self(strip_quoted_string(b)?.try_into()?))
+        Ok(Self(quoted(b)?.try_into()?))
     }
 }
 
@@ -152,12 +157,12 @@ impl TryFrom<&[u8]> for CommonName {
 pub struct Delegators(Vec<CalendarUserAddress>);
 
 impl TryFrom<&[u8]> for Delegators {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let mut vec = Vec::new();
         for s in b.split(|b| *b == b',') {
-            vec.push(strip_quoted_string(s)?.try_into()?);
+            vec.push(quoted(s)?.try_into()?);
         }
         Ok(Self(vec))
     }
@@ -179,12 +184,12 @@ impl TryFrom<&[u8]> for Delegators {
 pub struct Delegatees(Vec<CalendarUserAddress>);
 
 impl TryFrom<&[u8]> for Delegatees {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let mut vec = Vec::new();
         for s in b.split(|b| *b == b',') {
-            vec.push(strip_quoted_string(s)?.try_into()?);
+            vec.push(quoted(s)?.try_into()?);
         }
         Ok(Self(vec))
     }
@@ -204,10 +209,10 @@ impl TryFrom<&[u8]> for Delegatees {
 pub struct DirectoryEntryReference(Uri);
 
 impl TryFrom<&[u8]> for DirectoryEntryReference {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self(strip_quoted_string(b)?.try_into()?))
+        Ok(Self(quoted(b)?.try_into()?))
     }
 }
 
@@ -231,13 +236,13 @@ pub enum Encoding {
 }
 
 impl TryFrom<&[u8]> for Encoding {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         match b {
             b"BASE64" => Ok(Self::Base64),
             b"8BIT" => Ok(Self::Bit8),
-            _ => Err(ParseError::Parameter {
+            _ => Err(ParamError::Malformed {
                 expected: "BASE64 or 8BIT".into(),
                 received: std::str::from_utf8(b).ok().map(|s| s.into()),
             }),
@@ -264,7 +269,7 @@ impl TryFrom<&[u8]> for Encoding {
 pub struct Fmttype(MediaType);
 
 impl TryFrom<&[u8]> for Fmttype {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(b.try_into()?))
@@ -305,7 +310,7 @@ pub enum Fbtype {
 }
 
 impl TryFrom<&[u8]> for Fbtype {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let r = match b {
@@ -348,12 +353,12 @@ impl TryFrom<&[u8]> for Fbtype {
 pub struct Language(langtag::LangTagBuf);
 
 impl TryFrom<&[u8]> for Language {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(
             langtag::LangTagBuf::from_bytes(b.to_vec())
-                .map_err(|_| ParseError::Language)?,
+                .map_err(|_| ParamError::Language)?,
         ))
     }
 }
@@ -371,12 +376,12 @@ impl TryFrom<&[u8]> for Language {
 pub struct Member(Vec<CalendarUserAddress>);
 
 impl TryFrom<&[u8]> for Member {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let mut vec = Vec::new();
         for el in b.split(|b| *b == b',') {
-            vec.push(strip_quoted_string(el)?.try_into()?);
+            vec.push(quoted(el)?.try_into()?);
         }
         Ok(Self(vec))
     }
@@ -436,7 +441,7 @@ pub enum ParticipationStatus {
 }
 
 impl TryFrom<&[u8]> for ParticipationStatus {
-    type Error = ParseError;
+    type Error = ParamError;
 
     // COMPLETED and IN-PROCESS are VTODO-only; everything else is routed
     // through PartStatEvent, which covers the common superset
@@ -701,7 +706,7 @@ pub enum RecurrenceIdentifierRange {
 pub type Range = RecurrenceIdentifierRange;
 
 impl TryFrom<&[u8]> for CalendarUserType {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let r = match b {
@@ -723,7 +728,7 @@ impl TryFrom<&[u8]> for CalendarUserType {
 }
 
 impl TryFrom<&[u8]> for ParticipationRole {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let r = match b {
@@ -744,7 +749,7 @@ impl TryFrom<&[u8]> for ParticipationRole {
 }
 
 impl TryFrom<&[u8]> for PartStatEvent {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let r = match b {
@@ -766,7 +771,7 @@ impl TryFrom<&[u8]> for PartStatEvent {
 }
 
 impl TryFrom<&[u8]> for PartStatTodo {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let r = match b {
@@ -790,7 +795,7 @@ impl TryFrom<&[u8]> for PartStatTodo {
 }
 
 impl TryFrom<&[u8]> for PartStatJournal {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let r = match b {
@@ -810,7 +815,7 @@ impl TryFrom<&[u8]> for PartStatJournal {
 }
 
 impl TryFrom<&[u8]> for Rsvp {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(b.try_into()?))
@@ -818,19 +823,19 @@ impl TryFrom<&[u8]> for Rsvp {
 }
 
 impl TryFrom<&[u8]> for SentBy {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self(strip_quoted_string(b)?.try_into()?))
+        Ok(Self(quoted(b)?.try_into()?))
     }
 }
 
 impl TryFrom<&[u8]> for TimeZoneIdentifier {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let s = std::str::from_utf8(b)?;
-        let tz: Tz = s.parse().map_err(|_| ParseError::Parameter {
+        let tz: Tz = s.parse().map_err(|_| ParamError::Malformed {
             expected: "IANA timezone identifier".into(),
             received: Some(s.into()),
         })?;
@@ -839,7 +844,7 @@ impl TryFrom<&[u8]> for TimeZoneIdentifier {
 }
 
 impl TryFrom<&[u8]> for RelationshipType {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         let r = match b {
@@ -859,13 +864,13 @@ impl TryFrom<&[u8]> for RelationshipType {
 }
 
 impl TryFrom<&[u8]> for AlarmTriggerRelationship {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         match b {
             b"START" => Ok(Self::Start),
             b"END" => Ok(Self::End),
-            _ => Err(ParseError::Parameter {
+            _ => Err(ParamError::Malformed {
                 expected: "START or END".into(),
                 received: std::str::from_utf8(b).ok().map(|s| s.into()),
             }),
@@ -874,12 +879,12 @@ impl TryFrom<&[u8]> for AlarmTriggerRelationship {
 }
 
 impl TryFrom<&[u8]> for RecurrenceIdentifierRange {
-    type Error = ParseError;
+    type Error = ParamError;
 
     fn try_from(b: &[u8]) -> Result<Self, Self::Error> {
         match b {
             b"THISANDFUTURE" => Ok(Self::ThisAndFuture),
-            _ => Err(ParseError::Parameter {
+            _ => Err(ParamError::Malformed {
                 expected: "THISANDFUTURE".into(),
                 received: std::str::from_utf8(b).ok().map(|s| s.into()),
             }),
@@ -964,12 +969,17 @@ enum PropertyParams {
 }
 
 impl PropertyParams {
-    fn parse(b: &[u8]) -> ParseResult<Vec<Self>> {
+    fn parse(b: &[u8]) -> Result<Vec<Self>, ParameterError> {
         let mut out = Vec::new();
         // need to split by SEMICOLON BUT a SEMICOLON that is NOT in DOUBLE
         // QUOTES
         for s in b.split(|b| *b == b';') {
-            let (n, v) = split_once(s, b'=')?;
+            let (n, v) = split_once(s, b'=').ok_or_else(|| {
+                ParameterError::Malformed {
+                    expected: "NAME=VALUE".into(),
+                    received: std::str::from_utf8(s).ok().map(Into::into),
+                }
+            })?;
             let res = match n {
                 b"ALTREP" => Self::Altrep(v.try_into()?),
                 b"CN" => Self::CommonName(v.try_into()?),
@@ -1009,4 +1019,36 @@ impl PropertyParams {
         }
         Ok(out)
     }
+}
+
+/// A single property parameter (`ALTREP`, `LANGUAGE`, `TZID`, ...) failed to
+/// parse into its typed representation. Not to be confused with
+/// [`ParameterError`], which covers the surrounding `*(";" param)` list
+/// syntax (missing `=`, an unmodeled `NAME`, ...).
+#[derive(Debug, Error)]
+pub enum ParamError {
+    #[error("invalid frequency: {0}")]
+    InvalidFreq(String),
+    #[error("invalid weekday: {0}")]
+    InvalidWeekday(String),
+    #[error("malformed LANGUAGE tag")]
+    Language,
+    #[error("not a quoted-string value")]
+    QuotedString,
+    #[error("parameter parsing failed. Expected {expected}, got {received:?}")]
+    Malformed {
+        /// What the parameter value is supposed to be
+        expected: String,
+        /// What we actually received
+        received: Option<String>,
+    },
+    /// A param that's a thin wrapper over a `values.rs` type (e.g.
+    /// `Altrep(Uri)`, `CommonName(Text)`) failed at that inner value's own
+    /// parse step.
+    #[error(transparent)]
+    Value(#[from] ValueError),
+
+    /// Encoding error surfaced while decoding a param's raw bytes as UTF-8.
+    #[error(transparent)]
+    Utf8(#[from] std::str::Utf8Error),
 }

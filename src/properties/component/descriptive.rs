@@ -1,11 +1,11 @@
 use crate::{
     Pair,
-    ast::{parser::ParseError, split_once},
     params::{Encoding, Fmttype, Language, ValueDataType},
     properties::{
-        AltrepLanguageParams, SharedParams, param_name, param_segments,
+        AltrepLanguageParams, ParameterError, PropertyError, SharedParams,
+        param_name, param_segments, param_value,
     },
-    values::{Binary, Float, Integer, Text, Uri},
+    values::{Binary, Float, Integer, Text, Uri, ValueError},
 };
 
 /// This property is used in "VEVENT", "VTODO", and "VJOURNAL" calendar
@@ -40,7 +40,7 @@ enum AttachmentValue {
 }
 
 impl TryFrom<&[u8]> for AttachmentValue {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         // RFC 5545 selects between these via the ENCODING/VALUE params,
@@ -65,23 +65,21 @@ struct AttachmentParams {
 }
 
 impl TryFrom<&[u8]> for AttachmentParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"ENCODING" => {
-                    params.encoding =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.encoding = Some(param_value(segment)?.try_into()?)
                 }
                 b"VALUE" => {
                     params.value_data_type =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                        Some(param_value(segment)?.try_into()?)
                 }
                 b"FMTTYPE" => {
-                    params.fmttype =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.fmttype = Some(param_value(segment)?.try_into()?)
                 }
                 _ => params.shared.absorb(segment)?,
             }
@@ -116,15 +114,14 @@ struct CategoriesParams {
 }
 
 impl TryFrom<&[u8]> for CategoriesParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"LANGUAGE" => {
-                    params.language =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.language = Some(param_value(segment)?.try_into()?)
                 }
                 _ => params.shared.absorb(segment)?,
             }
@@ -177,7 +174,7 @@ enum ClassificationEnum {
 }
 
 impl TryFrom<&[u8]> for ClassificationEnum {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let r = match v {
@@ -255,7 +252,13 @@ pub struct Geo {
     params: SharedParams,
 }
 
-impl_try_from_bytes!(Geo, Pair<Float>);
+impl_try_from_bytes!(Geo, Pair<Float>, SharedParams, |f: &Pair<Float>| {
+    if *f.0 > 90.0 || *f.0 < -90.0 {
+        return Err(PropertyError::InvalidGeo.into());
+    }
+
+    Ok(())
+});
 
 /// Specific venues such as conference or meeting rooms may be explicitly
 /// specified using this property.  An alternate representation may be
@@ -340,7 +343,7 @@ impl_try_from_bytes!(Priority, Integer, SharedParams, |v: &Integer| {
         Ok(())
     } else {
         Err(crate::ast::parser::ParseError::Parameter {
-            expected: "PRIORITY value in 0..=9".into(),
+            expected: "PRIORITY value in 0..=9".to_string(),
             received: Some((**v).to_string()),
         })
     }
@@ -415,7 +418,7 @@ enum StatusValue {
 }
 
 impl TryFrom<&[u8]> for StatusValue {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         match v {
@@ -427,7 +430,7 @@ impl TryFrom<&[u8]> for StatusValue {
             b"IN-PROCESS" => Ok(Self::InProcess),
             b"DRAFT" => Ok(Self::Draft),
             b"FINAL" => Ok(Self::Final),
-            _ => Err(ParseError::Parameter {
+            _ => Err(ValueError::Malformed {
                 expected: "a valid STATUS token".into(),
                 received: std::str::from_utf8(v).ok().map(|s| s.into()),
             }),

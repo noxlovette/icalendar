@@ -29,12 +29,16 @@ pub struct Pair<T>(T, T);
 
 impl<T> TryFrom<&[u8]> for Pair<T>
 where
-    T: for<'a> TryFrom<&'a [u8], Error = ast::parser::ParseError>,
+    T: for<'a> TryFrom<&'a [u8], Error = values::ValueError>,
 {
-    type Error = ast::parser::ParseError;
+    type Error = values::ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
-        let (a, b) = ast::split_once(v, b';')?;
+        let (a, b) =
+            ast::split_once(v, b';').ok_or(values::ValueError::Malformed {
+                expected: "first;second".into(),
+                received: std::str::from_utf8(v).ok().map(Into::into),
+            })?;
         Ok(Self(a.try_into()?, b.try_into()?))
     }
 }

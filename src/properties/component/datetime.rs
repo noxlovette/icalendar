@@ -1,8 +1,11 @@
 use crate::{
-    ast::{parser::ParseError, split_once},
     params::{Fbtype, TimeZoneIdentifier, ValueDataType},
-    properties::{SharedParams, param_name, param_segments},
-    values::{DateOrDatetime, DateTime, Duration as DurationV, Period},
+    properties::{
+        ParameterError, SharedParams, param_name, param_segments, param_value,
+    },
+    values::{
+        DateOrDatetime, DateTime, Duration as DurationV, Period, ValueError,
+    },
 };
 
 /// These params are shared by this module's component properties
@@ -14,7 +17,7 @@ struct DateTimeParams {
 }
 
 impl TryFrom<&[u8]> for DateTimeParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
@@ -22,11 +25,11 @@ impl TryFrom<&[u8]> for DateTimeParams {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"VALUE" => {
                     params.value_data_type =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                        Some(param_value(segment)?.try_into()?)
                 }
                 b"TZID" => {
                     params.tz_identifier =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                        Some(param_value(segment)?.try_into()?)
                 }
                 _ => params.shared.absorb(segment)?,
             }
@@ -136,15 +139,14 @@ struct FreeBusyTimeParams {
 }
 
 impl TryFrom<&[u8]> for FreeBusyTimeParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"FBTYPE" => {
-                    params.fb_time_type =
-                        split_once(segment, b'=')?.1.try_into()?
+                    params.fb_time_type = param_value(segment)?.try_into()?
                 }
                 _ => params.shared.absorb(segment)?,
             }
@@ -180,13 +182,13 @@ pub enum TranspValue {
 }
 
 impl TryFrom<&[u8]> for TranspValue {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         match v {
             b"OPAQUE" => Ok(Self::Opaque),
             b"TRANSPARENT" => Ok(Self::Transparent),
-            _ => Err(ParseError::Parameter {
+            _ => Err(ValueError::Malformed {
                 expected: "OPAQUE or TRANSPARENT".into(),
                 received: std::str::from_utf8(v).ok().map(|s| s.into()),
             }),

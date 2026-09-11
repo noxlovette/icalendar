@@ -1,5 +1,4 @@
 use crate::{
-    ast::{parser::ParseError, split_once},
     params::{
         CalendarUserType, CommonName, Delegatees, Delegators,
         DirectoryEntryReference, Language, Member, ParticipationStatus,
@@ -7,7 +6,8 @@ use crate::{
         TimeZoneIdentifier, ValueDataType,
     },
     properties::{
-        AltrepLanguageParams, SharedParams, param_name, param_segments,
+        AltrepLanguageParams, ParameterError, SharedParams, param_name,
+        param_segments, param_value,
     },
     values::{CalendarUserAddress, DateOrDatetime, Text, Uri},
 };
@@ -45,12 +45,12 @@ struct AttendeeParams {
 }
 
 impl TryFrom<&[u8]> for AttendeeParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
-            let value = || split_once(segment, b'=').map(|(_, v)| v);
+            let value = || param_value(segment);
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"LANGUAGE" => params.language = Some(value()?.try_into()?),
                 b"CUTYPE" => {
@@ -117,12 +117,12 @@ pub struct OrgParams {
 }
 
 impl TryFrom<&[u8]> for OrgParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
-            let value = || split_once(segment, b'=').map(|(_, v)| v);
+            let value = || param_value(segment);
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"LANGUAGE" => params.language = Some(value()?.try_into()?),
                 b"CN" => params.common_name = Some(value()?.try_into()?),
@@ -162,12 +162,12 @@ struct RecurrenceParams {
 }
 
 impl TryFrom<&[u8]> for RecurrenceParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
-            let value = || split_once(segment, b'=').map(|(_, v)| v);
+            let value = || param_value(segment);
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"VALUE" => params.data_type = Some(value()?.try_into()?),
                 b"TZID" => params.tzid = Some(value()?.try_into()?),
@@ -207,14 +207,14 @@ struct RelatedToParams {
 }
 
 impl TryFrom<&[u8]> for RelatedToParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"RELTYPE" => {
-                    params.rt = Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.rt = Some(param_value(segment)?.try_into()?)
                 }
                 _ => params.shared.absorb(segment)?,
             }

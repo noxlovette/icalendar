@@ -2,11 +2,14 @@ use super::token::Token;
 use crate::{
     Calendar,
     ast::{
-        AlarmBuilder, CalendarBuilder, CalendarError, Component, EventBuilder,
+        AlarmBuilder, CalendarBuilder, Component, ComponentError, EventBuilder,
         FreeBusyBuilder, JournalBuilder, Property, PropertyIngest,
         TimezoneBuilder, TodoBuilder, TzObservanceKind, TzPropBuilder,
         token::TokenType,
     },
+    params::ParamError,
+    properties::{ParameterError, PropertyError},
+    values::ValueError,
 };
 use TokenType::*;
 use std::str::Utf8Error;
@@ -69,7 +72,7 @@ impl Parser {
                 Property::CalendarScale(c) => cal.calscale = Some(c),
                 Property::Xprop(x) => cal.xprop.push(x),
                 Property::Iana(i) => cal.iana.push(i),
-                _ => return Err(ParseError::UnexpectedProperty),
+                _ => return Err(PropertyError::UnexpectedProperty.into()),
             }
         }
 
@@ -301,13 +304,8 @@ pub enum ParseError {
     #[error("unknown component")]
     UnknownComponent,
 
-    #[error("property is not valid at this position in the grammar")]
-    UnexpectedProperty,
-
-    /// A property that RFC 5545 says MUST NOT occur more than once within
-    /// a component showed up a second time.
-    #[error("{0} MUST NOT occur more than once in this component")]
-    DuplicateProperty(&'static str),
+    #[error(transparent)]
+    Property(#[from] PropertyError),
 
     /// A recognized sub-component (`VALARM`, `STANDARD`, `DAYLIGHT`) turned
     /// up somewhere RFC 5545 doesn't allow it to be nested.
@@ -317,32 +315,9 @@ pub enum ParseError {
     #[error("component's END name doesn't match its BEGIN name")]
     MismatchedEnd,
 
-    /// URL parsing error
-    #[error(transparent)]
-    URL(#[from] url::ParseError),
-
-    /// Quoted String Error
-    #[error("Not a quoted string value")]
-    QuotedString,
-
     /// Encoding error
     #[error(transparent)]
     UTF(#[from] Utf8Error),
-
-    /// [CalendarUserAddress] Parsing Error
-    #[error("Malformed CalenderUserAddress")]
-    CalUserAddress,
-
-    /// [MediaType] Parsing Error
-    #[error("Malformed MediaType")]
-    MediaType,
-
-    /// [Language] Parsing Error
-    #[error("Malformed Language")]
-    Language,
-
-    #[error("Malformed Boolean")]
-    Boolean,
 
     #[error("Unexpected EOF")]
     UnexpectedEof,
@@ -358,35 +333,23 @@ pub enum ParseError {
     EmptyTokenList,
 
     #[error(transparent)]
-    Calendar(#[from] CalendarError),
+    Component(#[from] ComponentError),
 
-    #[error("The local time supplied did not yield a single time instance")]
-    AmbiguousLocalTime,
-
-    /// Shared by every value type backed by a `chrono` parser (`DATE`,
-    /// `DATE-TIME`).
+    /// A single property parameter (`ALTREP`, `LANGUAGE`, ...) failed to
+    /// parse into its typed representation. See [`ParamError`].
     #[error(transparent)]
-    ChronoParse(#[from] chrono::ParseError),
+    Param(#[from] ParamError),
 
-    /// \[[Integer](crate::values::Integer)\] parsing error
+    /// The `*(";" param)` parameter list of a content line failed to parse
+    /// — a malformed `NAME=VALUE` segment, or one of its params. See
+    /// [`ParameterError`].
     #[error(transparent)]
-    Integer(#[from] std::num::ParseIntError),
+    Parameters(#[from] ParameterError),
 
-    /// \[[Float](crate::values::Float)\] parsing error
+    /// A property's value failed to parse into its typed representation.
+    /// See [`ValueError`].
     #[error(transparent)]
-    Float(#[from] std::num::ParseFloatError),
-
-    /// \[[UtcOffset](crate::values::UtcOffset)\] parsing error
-    #[error("Malformed UTC offset")]
-    UtcOffset,
-
-    /// \[[Duration](crate::values::Duration)\] parsing error
-    #[error("Malformed Duration")]
-    Duration,
-
-    /// \[[Binary](crate::values::Binary)\] decoding error
-    #[error(transparent)]
-    Base64(#[from] base64::DecodeError),
+    Value(#[from] ValueError),
 }
 #[cfg(test)]
 mod tests {

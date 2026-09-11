@@ -1,8 +1,9 @@
 use crate::{
-    ast::{parser::ParseError, split_once},
     params::{AlarmTriggerRelationship, TimeZoneIdentifier, ValueDataType},
-    properties::{SharedParams, param_name, param_segments},
-    values::{DateTimeDuration, Integer, Text},
+    properties::{
+        ParameterError, SharedParams, param_name, param_segments, param_value,
+    },
+    values::{DateTimeDuration, Integer, Text, ValueError},
 };
 
 /// This property defines the action to be invoked when an alarm is triggered.
@@ -45,7 +46,7 @@ impl Action {
 }
 
 impl TryFrom<&[u8]> for ActionEnum {
-    type Error = ParseError;
+    type Error = ValueError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let r = match v {
@@ -106,7 +107,7 @@ struct TriggerParams {
 }
 
 impl TryFrom<&[u8]> for TriggerParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
@@ -114,15 +115,15 @@ impl TryFrom<&[u8]> for TriggerParams {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"VALUE" => {
                     params.value_data_type =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                        Some(param_value(segment)?.try_into()?)
                 }
                 b"TZID" => {
                     params.tz_identifier =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                        Some(param_value(segment)?.try_into()?)
                 }
                 b"RELATED" => {
                     params.trigger_relationship =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                        Some(param_value(segment)?.try_into()?)
                 }
                 _ => params.shared.absorb(segment)?,
             }

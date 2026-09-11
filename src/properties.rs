@@ -101,9 +101,9 @@ pub struct Iana {
 impl_try_from_bytes!(Iana);
 
 use crate::{
-    ast::{parser::ParseError, split_once},
-    params::{Altrep, Language},
-    values::Text,
+    ast::split_once,
+    params::{Altrep, Language, ParamError},
+    values::{Text, ValueError},
 };
 
 /// Splits raw parameter bytes (e.g. `;FOO=BAR;X-BAZ="a;b"`) into its
@@ -129,9 +129,27 @@ fn param_segments(v: &[u8]) -> Vec<&[u8]> {
     segments
 }
 
+/// Builds the [`ParameterError::Malformed`] shared by [`param_name`] and
+/// [`param_value`] when a `NAME=VALUE` parameter segment has no `=`.
+fn missing_equals(segment: &[u8]) -> ParameterError {
+    ParameterError::Malformed {
+        expected: "NAME=VALUE".into(),
+        received: std::str::from_utf8(segment).ok().map(Into::into),
+    }
+}
+
 /// The `NAME` half of a `NAME=VALUE` parameter segment.
-fn param_name(segment: &[u8]) -> Result<&[u8], ParseError> {
-    Ok(split_once(segment, b'=')?.0)
+pub(crate) fn param_name(segment: &[u8]) -> Result<&[u8], ParameterError> {
+    split_once(segment, b'=')
+        .map(|(n, _)| n)
+        .ok_or_else(|| missing_equals(segment))
+}
+
+/// The `VALUE` half of a `NAME=VALUE` parameter segment.
+pub(crate) fn param_value(segment: &[u8]) -> Result<&[u8], ParameterError> {
+    split_once(segment, b'=')
+        .map(|(_, v)| v)
+        .ok_or_else(|| missing_equals(segment))
 }
 
 /// This trait ensures that all parameters as used in properties have iana and
@@ -157,7 +175,7 @@ impl SharedParams {
     /// `iana` or `xname` bucket, based on whether `NAME` has the `X-`
     /// prefix. Used both by [`SharedParams`]'s own `TryFrom` and by every
     /// composite params struct's fallback arm for params it doesn't model.
-    fn absorb(&mut self, segment: &[u8]) -> Result<(), ParseError> {
+    fn absorb(&mut self, segment: &[u8]) -> Result<(), ParameterError> {
         let name = param_name(segment)?;
         let text: Text = segment.try_into()?;
         if name.to_ascii_uppercase().starts_with(b"X-") {
@@ -170,7 +188,7 @@ impl SharedParams {
 }
 
 impl TryFrom<&[u8]> for SharedParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
@@ -204,19 +222,17 @@ struct AltrepLanguageParams {
 }
 
 impl TryFrom<&[u8]> for AltrepLanguageParams {
-    type Error = ParseError;
+    type Error = ParameterError;
 
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"ALTREP" => {
-                    params.altrep =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.altrep = Some(param_value(segment)?.try_into()?)
                 }
                 b"LANGUAGE" => {
-                    params.language =
-                        Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.language = Some(param_value(segment)?.try_into()?)
                 }
                 _ => params.shared.absorb(segment)?,
             }
@@ -229,6 +245,45 @@ impl TryFrom<&[u8]> for AltrepLanguageParams {
 pub enum PropertyError {
     #[error("invalid value for PRIORITY")]
     InvalidPriority,
+    #[error("invalid value for GEO")]
+    InvalidGeo,
+    #[error("property is not valid at this position in the grammar")]
+    UnexpectedProperty,
+    #[error("{0} MUST NOT occur more than once in this component")]
+    DuplicateProperty(&'static str),
+}
+
+/// The `*(";" param)` parameter list of a content line failed to parse.
+///
+/// Distinct from [`crate::params::ParamError`], which covers one individual
+/// parameter (`ALTREP`, `LANGUAGE`, ...) failing at its own value-parsing
+/// step — that error surfaces here as [`ParameterError::Param`]. This type
+/// is for the surrounding list syntax itself: a `NAME=VALUE` segment with no
+/// `=`, or a modeled parameter appearing where [`SharedParams::absorb`]
+/// falls back to iana/x-name text and that fails to parse as `TEXT`.
+#[derive(Debug, Error)]
+pub enum ParameterError {
+    /// A parameter segment didn't match the `NAME=VALUE` shape expected of
+    /// it.
+    #[error(
+        "parameter list parsing failed. Expected {expected}, got {received:?}"
+    )]
+    Malformed {
+        /// What the segment is supposed to be
+        expected: String,
+        /// What we actually received
+        received: Option<String>,
+    },
+
+    /// One parameter's own value failed to parse. See
+    /// [`crate::params::ParamError`].
+    #[error(transparent)]
+    Param(#[from] ParamError),
+
+    /// An iana/x-name parameter's value failed to parse as `TEXT`. See
+    /// [`crate::values::ValueError`].
+    #[error(transparent)]
+    Value(#[from] ValueError),
 }
 
 #[cfg(test)]

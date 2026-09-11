@@ -17,29 +17,18 @@ use crate::{
     properties::*,
 };
 
-/// Splits a Bytes vector by given pattern
-pub(crate) fn split_once(b: &[u8], needle: u8) -> ParseResult<(&[u8], &[u8])> {
+/// Splits a Bytes vector by given pattern. Error-agnostic — callers map the
+/// `None` case to whichever error type fits their layer (`ValueError`,
+/// `ParamError`, `ParameterError`, `ParseError`, ...).
+pub(crate) fn split_once(b: &[u8], needle: u8) -> Option<(&[u8], &[u8])> {
     b.iter()
         .position(|b| *b == needle)
         .map(|pos| (&b[..pos], &b[pos + 1..]))
-        .ok_or(ParseError::Parameter {
-            expected: needle.to_string(),
-            received: std::str::from_utf8(b).ok().map(|s| s.into()),
-        })
 }
 
 /// [Case-insensitively](https://datatracker.ietf.org/doc/html/rfc5545#section-3.5) matches the name to a given pattern
-pub(crate) fn match_name(b: &[u8], pat: &[u8]) -> ParseResult<()> {
-    if b.to_ascii_uppercase() != pat {
-        Err(ParseError::Parameter {
-            expected: std::str::from_utf8(pat)
-                .unwrap_or("Unknown pattern")
-                .into(),
-            received: std::str::from_utf8(b).ok().map(|s| s.into()),
-        })
-    } else {
-        Ok(())
-    }
+pub(crate) fn match_name(b: &[u8], pat: &[u8]) -> bool {
+    b.to_ascii_uppercase() == pat
 }
 
 /// Finds the byte offset of the first unquoted occurrence of `needle` in
@@ -60,14 +49,13 @@ pub(crate) fn find_unquoted(b: &[u8], needle: u8) -> Option<usize> {
     None
 }
 
-/// Checks if a given value is in quotes and returns that value with the quotes
-/// stripped
-pub(crate) fn strip_quoted_string(v: &[u8]) -> ParseResult<&[u8]> {
+/// Checks if a given value is in quotes and returns that value with the
+/// quotes stripped. `None` if it isn't quoted — error-agnostic, see
+/// [`split_once`].
+pub(crate) fn strip_quoted_string(v: &[u8]) -> Option<&[u8]> {
     let needle = &[b'"'];
 
-    v.strip_prefix(needle)
-        .and_then(|s| s.strip_suffix(needle))
-        .ok_or(ParseError::QuotedString)
+    v.strip_prefix(needle).and_then(|s| s.strip_suffix(needle))
 }
 
 /// The calendar component carried by an [`crate::ICalendar`] object.
@@ -165,7 +153,7 @@ impl Component {
     /// `has_method` is only consulted by [`EventBuilder::build`] (RFC 5545
     /// §3.6.1's `DTSTART`/`METHOD` interaction) — every other component
     /// ignores it.
-    fn build(self, has_method: bool) -> Result<CalComponent, CalendarError> {
+    fn build(self, has_method: bool) -> Result<CalComponent, ComponentError> {
         Ok(match self {
             Self::Event(b) => CalComponent::Event(b.build(has_method)?),
             Self::Todo(b) => CalComponent::Todo(b.build()?),
@@ -194,7 +182,7 @@ fn set_once<T>(
     name: &'static str,
 ) -> ParseResult<()> {
     if slot.is_some() {
-        return Err(ParseError::DuplicateProperty(name));
+        return Err(PropertyError::DuplicateProperty(name).into());
     }
     *slot = Some(value);
     Ok(())
@@ -647,13 +635,14 @@ impl CalendarBuilder {
         Self::default()
     }
 
-    fn build(self) -> Result<Calendar, CalendarError> {
+    fn build(self) -> Result<Calendar, ComponentError> {
         let prodid =
-            self.prodid.ok_or(CalendarError::MissingField("PRODID"))?;
-        let version =
-            self.version.ok_or(CalendarError::MissingField("VERSION"))?;
+            self.prodid.ok_or(ComponentError::MissingField("PRODID"))?;
+        let version = self
+            .version
+            .ok_or(ComponentError::MissingField("VERSION"))?;
         if self.components.is_empty() {
-            return Err(CalendarError::RequiresAtLeastOne(
+            return Err(ComponentError::RequiresAtLeastOne(
                 "VCALENDAR",
                 "calendar component",
             ));
@@ -681,7 +670,7 @@ impl CalendarBuilder {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum CalendarError {
+pub enum ComponentError {
     #[error("Missing field: {0}")]
     MissingField(&'static str),
 
@@ -764,12 +753,12 @@ impl EventBuilder {
     /// and assembles the finished [`Event`]. `has_method` is whether the
     /// enclosing `VCALENDAR` specified a `METHOD` property — `DTSTART` is
     /// only REQUIRED here when it didn't.
-    fn build(self, has_method: bool) -> Result<Event, CalendarError> {
+    fn build(self, has_method: bool) -> Result<Event, ComponentError> {
         if !has_method && self.dtstart.is_none() {
-            return Err(CalendarError::MissingField("DTSTART"));
+            return Err(ComponentError::MissingField("DTSTART"));
         }
         if self.dtend.is_some() && self.duration.is_some() {
-            return Err(CalendarError::MutuallyExclusive("DTEND", "DURATION"));
+            return Err(ComponentError::MutuallyExclusive("DTEND", "DURATION"));
         }
         let alarms = self
             .alarms
@@ -780,8 +769,8 @@ impl EventBuilder {
         Ok(Event {
             dtstamp: self
                 .dtstamp
-                .ok_or(CalendarError::MissingField("DTSTAMP"))?,
-            uid: self.uid.ok_or(CalendarError::MissingField("UID"))?,
+                .ok_or(ComponentError::MissingField("DTSTAMP"))?,
+            uid: self.uid.ok_or(ComponentError::MissingField("UID"))?,
             dtstart: self.dtstart,
             class: self.class,
             created: self.created,
@@ -881,7 +870,7 @@ impl PropertyIngest for EventBuilder {
             Property::RecurrenceDateTimes(v) => Ok(self.rdate.push(v)),
             Property::Xprop(v) => Ok(self.xprop.push(v)),
             Property::Iana(v) => Ok(self.iana.push(v)),
-            _ => Err(ParseError::UnexpectedProperty),
+            _ => Err(PropertyError::UnexpectedProperty.into()),
         }
     }
 }
@@ -931,12 +920,12 @@ impl TodoBuilder {
 
     /// Validates the cross-field rules RFC 5545 §3.6.2 places on `VTODO`
     /// and assembles the finished [`Todo`].
-    fn build(self) -> Result<Todo, CalendarError> {
+    fn build(self) -> Result<Todo, ComponentError> {
         if self.due.is_some() && self.duration.is_some() {
-            return Err(CalendarError::MutuallyExclusive("DUE", "DURATION"));
+            return Err(ComponentError::MutuallyExclusive("DUE", "DURATION"));
         }
         if self.duration.is_some() && self.dtstart.is_none() {
-            return Err(CalendarError::Requires("DURATION", "DTSTART"));
+            return Err(ComponentError::Requires("DURATION", "DTSTART"));
         }
         let alarms = self
             .alarms
@@ -947,8 +936,8 @@ impl TodoBuilder {
         Ok(Todo {
             dtstamp: self
                 .dtstamp
-                .ok_or(CalendarError::MissingField("DTSTAMP"))?,
-            uid: self.uid.ok_or(CalendarError::MissingField("UID"))?,
+                .ok_or(ComponentError::MissingField("DTSTAMP"))?,
+            uid: self.uid.ok_or(ComponentError::MissingField("UID"))?,
             class: self.class,
             completed: self.completed,
             created: self.created,
@@ -1052,7 +1041,7 @@ impl PropertyIngest for TodoBuilder {
             Property::RecurrenceDateTimes(v) => Ok(self.rdate.push(v)),
             Property::Xprop(v) => Ok(self.xprop.push(v)),
             Property::Iana(v) => Ok(self.iana.push(v)),
-            _ => Err(ParseError::UnexpectedProperty),
+            _ => Err(PropertyError::UnexpectedProperty.into()),
         }
     }
 }
@@ -1094,37 +1083,38 @@ impl AlarmBuilder {
     /// three alternative grammars (`audioprop`/`dispprop`/`emailprop`)
     /// applies — everything beyond "`ACTION` and `TRIGGER` are both
     /// required" is specific to that alternative.
-    fn build(self) -> Result<Alarm, CalendarError> {
+    fn build(self) -> Result<Alarm, ComponentError> {
         let action =
-            self.action.ok_or(CalendarError::MissingField("ACTION"))?;
-        let trigger =
-            self.trigger.ok_or(CalendarError::MissingField("TRIGGER"))?;
+            self.action.ok_or(ComponentError::MissingField("ACTION"))?;
+        let trigger = self
+            .trigger
+            .ok_or(ComponentError::MissingField("TRIGGER"))?;
         if self.duration.is_some() != self.repeat.is_some() {
-            return Err(CalendarError::RequiresTogether("DURATION", "REPEAT"));
+            return Err(ComponentError::RequiresTogether("DURATION", "REPEAT"));
         }
 
         match action.kind() {
             ActionEnum::Audio => {
                 if self.description.is_some() {
-                    return Err(CalendarError::NotAllowed(
+                    return Err(ComponentError::NotAllowed(
                         "DESCRIPTION",
                         "ACTION is AUDIO",
                     ));
                 }
                 if self.summary.is_some() {
-                    return Err(CalendarError::NotAllowed(
+                    return Err(ComponentError::NotAllowed(
                         "SUMMARY",
                         "ACTION is AUDIO",
                     ));
                 }
                 if !self.attendee.is_empty() {
-                    return Err(CalendarError::NotAllowed(
+                    return Err(ComponentError::NotAllowed(
                         "ATTENDEE",
                         "ACTION is AUDIO",
                     ));
                 }
                 if self.attach.len() > 1 {
-                    return Err(CalendarError::NotAllowed(
+                    return Err(ComponentError::NotAllowed(
                         "more than one ATTACH",
                         "ACTION is AUDIO",
                     ));
@@ -1132,22 +1122,22 @@ impl AlarmBuilder {
             }
             ActionEnum::Display => {
                 if self.description.is_none() {
-                    return Err(CalendarError::MissingField("DESCRIPTION"));
+                    return Err(ComponentError::MissingField("DESCRIPTION"));
                 }
                 if self.summary.is_some() {
-                    return Err(CalendarError::NotAllowed(
+                    return Err(ComponentError::NotAllowed(
                         "SUMMARY",
                         "ACTION is DISPLAY",
                     ));
                 }
                 if !self.attendee.is_empty() {
-                    return Err(CalendarError::NotAllowed(
+                    return Err(ComponentError::NotAllowed(
                         "ATTENDEE",
                         "ACTION is DISPLAY",
                     ));
                 }
                 if !self.attach.is_empty() {
-                    return Err(CalendarError::NotAllowed(
+                    return Err(ComponentError::NotAllowed(
                         "ATTACH",
                         "ACTION is DISPLAY",
                     ));
@@ -1155,13 +1145,13 @@ impl AlarmBuilder {
             }
             ActionEnum::Email => {
                 if self.description.is_none() {
-                    return Err(CalendarError::MissingField("DESCRIPTION"));
+                    return Err(ComponentError::MissingField("DESCRIPTION"));
                 }
                 if self.summary.is_none() {
-                    return Err(CalendarError::MissingField("SUMMARY"));
+                    return Err(ComponentError::MissingField("SUMMARY"));
                 }
                 if self.attendee.is_empty() {
-                    return Err(CalendarError::RequiresAtLeastOne(
+                    return Err(ComponentError::RequiresAtLeastOne(
                         "ACTION EMAIL",
                         "ATTENDEE",
                     ));
@@ -1204,7 +1194,7 @@ impl PropertyIngest for AlarmBuilder {
             Property::Attachment(v) => Ok(self.attach.push(v)),
             Property::Xprop(v) => Ok(self.xprop.push(v)),
             Property::Iana(v) => Ok(self.iana.push(v)),
-            _ => Err(ParseError::UnexpectedProperty),
+            _ => Err(PropertyError::UnexpectedProperty.into()),
         }
     }
 }
@@ -1216,12 +1206,12 @@ impl FreeBusyBuilder {
 
     /// Validates the cross-field rules RFC 5545 §3.6.4 places on
     /// `VFREEBUSY` and assembles the finished [`FreeBusy`].
-    fn build(self) -> Result<FreeBusy, CalendarError> {
+    fn build(self) -> Result<FreeBusy, ComponentError> {
         Ok(FreeBusy {
             dtstamp: self
                 .dtstamp
-                .ok_or(CalendarError::MissingField("DTSTAMP"))?,
-            uid: self.uid.ok_or(CalendarError::MissingField("UID"))?,
+                .ok_or(ComponentError::MissingField("DTSTAMP"))?,
+            uid: self.uid.ok_or(ComponentError::MissingField("UID"))?,
             contact: self.contact,
             dtstart: self.dtstart,
             dtend: self.dtend,
@@ -1261,7 +1251,7 @@ impl PropertyIngest for FreeBusyBuilder {
             Property::RequestStatus(v) => Ok(self.rstatus.push(v)),
             Property::Xprop(v) => Ok(self.xprop.push(v)),
             Property::Iana(v) => Ok(self.iana.push(v)),
-            _ => Err(ParseError::UnexpectedProperty),
+            _ => Err(PropertyError::UnexpectedProperty.into()),
         }
     }
 }
@@ -1272,12 +1262,12 @@ impl JournalBuilder {
 
     /// Validates the cross-field rules RFC 5545 §3.6.3 places on
     /// `VJOURNAL` and assembles the finished [`Journal`].
-    fn build(self) -> Result<Journal, CalendarError> {
+    fn build(self) -> Result<Journal, ComponentError> {
         Ok(Journal {
             dtstamp: self
                 .dtstamp
-                .ok_or(CalendarError::MissingField("DTSTAMP"))?,
-            uid: self.uid.ok_or(CalendarError::MissingField("UID"))?,
+                .ok_or(ComponentError::MissingField("DTSTAMP"))?,
+            uid: self.uid.ok_or(ComponentError::MissingField("UID"))?,
             class: self.class,
             created: self.created,
             dtstart: self.dtstart,
@@ -1349,7 +1339,7 @@ impl PropertyIngest for JournalBuilder {
             Property::RequestStatus(v) => Ok(self.rstatus.push(v)),
             Property::Xprop(v) => Ok(self.xprop.push(v)),
             Property::Iana(v) => Ok(self.iana.push(v)),
-            _ => Err(ParseError::UnexpectedProperty),
+            _ => Err(PropertyError::UnexpectedProperty.into()),
         }
     }
 }
@@ -1425,9 +1415,9 @@ impl TimezoneBuilder {
     /// `STANDARD` or `DAYLIGHT` sub-component is required — that can only
     /// be checked once every nested sub-component has been seen, hence
     /// here rather than in `ingest`.
-    fn build(self) -> Result<Timezone, CalendarError> {
+    fn build(self) -> Result<Timezone, ComponentError> {
         if self.standardc.is_empty() && self.daylightc.is_empty() {
-            return Err(CalendarError::RequiresAtLeastOne(
+            return Err(ComponentError::RequiresAtLeastOne(
                 "VTIMEZONE",
                 "STANDARD or DAYLIGHT",
             ));
@@ -1444,7 +1434,7 @@ impl TimezoneBuilder {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Timezone {
-            tzid: self.tzid.ok_or(CalendarError::MissingField("TZID"))?,
+            tzid: self.tzid.ok_or(ComponentError::MissingField("TZID"))?,
             last_mod: self.last_mod,
             tz_url: self.tzurl,
             standardc,
@@ -1467,7 +1457,7 @@ impl PropertyIngest for TimezoneBuilder {
             Property::TimeZoneUrl(v) => set_once(&mut self.tzurl, v, "TZURL"),
             Property::Xprop(v) => Ok(self.xprop.push(v)),
             Property::Iana(v) => Ok(self.iana.push(v)),
-            _ => Err(ParseError::UnexpectedProperty),
+            _ => Err(PropertyError::UnexpectedProperty.into()),
         }
     }
 }
@@ -1506,17 +1496,17 @@ impl TzPropBuilder {
 
     /// Validates the `tzprop` grammar's required fields (RFC 5545 §3.6.5)
     /// and assembles the finished [`TzProp`].
-    fn build(self) -> Result<TzProp, CalendarError> {
+    fn build(self) -> Result<TzProp, ComponentError> {
         Ok(TzProp {
             dtstart: self
                 .dtstart
-                .ok_or(CalendarError::MissingField("DTSTART"))?,
+                .ok_or(ComponentError::MissingField("DTSTART"))?,
             tz_offset_to: self
                 .tz_offset_to
-                .ok_or(CalendarError::MissingField("TZOFFSETTO"))?,
+                .ok_or(ComponentError::MissingField("TZOFFSETTO"))?,
             tz_offset_from: self
                 .tz_offset_from
-                .ok_or(CalendarError::MissingField("TZOFFSETFROM"))?,
+                .ok_or(ComponentError::MissingField("TZOFFSETFROM"))?,
             rrule: self.rrule,
             comment: self.comment,
             rdate: self.rdate,
@@ -1545,7 +1535,7 @@ impl PropertyIngest for TzPropBuilder {
             Property::TimeZoneName(v) => Ok(self.tzname.push(v)),
             Property::Xprop(v) => Ok(self.xprop.push(v)),
             Property::Iana(v) => Ok(self.iana.push(v)),
-            _ => Err(ParseError::UnexpectedProperty),
+            _ => Err(PropertyError::UnexpectedProperty.into()),
         }
     }
 }
@@ -1572,7 +1562,7 @@ mod build_tests {
         b.dtstamp = None;
         assert!(matches!(
             b.build(true),
-            Err(CalendarError::MissingField("DTSTAMP"))
+            Err(ComponentError::MissingField("DTSTAMP"))
         ));
     }
 
@@ -1582,7 +1572,7 @@ mod build_tests {
         b.uid = None;
         assert!(matches!(
             b.build(true),
-            Err(CalendarError::MissingField("UID"))
+            Err(ComponentError::MissingField("UID"))
         ));
     }
 
@@ -1592,7 +1582,7 @@ mod build_tests {
         b.dtstart = None;
         assert!(matches!(
             b.build(false),
-            Err(CalendarError::MissingField("DTSTART"))
+            Err(ComponentError::MissingField("DTSTART"))
         ));
         assert!(minimal_event().build(true).is_ok());
     }
@@ -1604,7 +1594,7 @@ mod build_tests {
         b.ingest(prop(b"DURATION", b":PT1H")).unwrap();
         assert!(matches!(
             b.build(true),
-            Err(CalendarError::MutuallyExclusive("DTEND", "DURATION"))
+            Err(ComponentError::MutuallyExclusive("DTEND", "DURATION"))
         ));
     }
 
@@ -1630,7 +1620,7 @@ mod build_tests {
         b.ingest(prop(b"DURATION", b":PT1H")).unwrap();
         assert!(matches!(
             b.build(),
-            Err(CalendarError::MutuallyExclusive("DUE", "DURATION"))
+            Err(ComponentError::MutuallyExclusive("DUE", "DURATION"))
         ));
     }
 
@@ -1640,7 +1630,7 @@ mod build_tests {
         b.ingest(prop(b"DURATION", b":PT1H")).unwrap();
         assert!(matches!(
             b.build(),
-            Err(CalendarError::Requires("DURATION", "DTSTART"))
+            Err(ComponentError::Requires("DURATION", "DTSTART"))
         ));
     }
 
@@ -1660,14 +1650,14 @@ mod build_tests {
     fn alarm_requires_action_and_trigger() {
         assert!(matches!(
             AlarmBuilder::new().build(),
-            Err(CalendarError::MissingField("ACTION"))
+            Err(ComponentError::MissingField("ACTION"))
         ));
 
         let mut with_action = AlarmBuilder::new();
         with_action.ingest(prop(b"ACTION", b":AUDIO")).unwrap();
         assert!(matches!(
             with_action.build(),
-            Err(CalendarError::MissingField("TRIGGER"))
+            Err(ComponentError::MissingField("TRIGGER"))
         ));
     }
 
@@ -1677,7 +1667,7 @@ mod build_tests {
         b.ingest(prop(b"DURATION", b":PT15M")).unwrap();
         assert!(matches!(
             b.build(),
-            Err(CalendarError::RequiresTogether("DURATION", "REPEAT"))
+            Err(ComponentError::RequiresTogether("DURATION", "REPEAT"))
         ));
     }
 
@@ -1687,7 +1677,7 @@ mod build_tests {
         b.ingest(prop(b"DESCRIPTION", b":Beep")).unwrap();
         assert!(matches!(
             b.build(),
-            Err(CalendarError::NotAllowed("DESCRIPTION", _))
+            Err(ComponentError::NotAllowed("DESCRIPTION", _))
         ));
     }
 
@@ -1696,7 +1686,7 @@ mod build_tests {
         let b = minimal_alarm(b":DISPLAY");
         assert!(matches!(
             b.build(),
-            Err(CalendarError::MissingField("DESCRIPTION"))
+            Err(ComponentError::MissingField("DESCRIPTION"))
         ));
     }
 
@@ -1704,7 +1694,7 @@ mod build_tests {
     fn alarm_email_requires_description_summary_and_attendee() {
         assert!(matches!(
             minimal_alarm(b":EMAIL").build(),
-            Err(CalendarError::MissingField("DESCRIPTION"))
+            Err(ComponentError::MissingField("DESCRIPTION"))
         ));
 
         let mut with_description = minimal_alarm(b":EMAIL");
@@ -1713,7 +1703,7 @@ mod build_tests {
             .unwrap();
         assert!(matches!(
             with_description.build(),
-            Err(CalendarError::MissingField("SUMMARY"))
+            Err(ComponentError::MissingField("SUMMARY"))
         ));
 
         let mut with_summary = minimal_alarm(b":EMAIL");
@@ -1723,7 +1713,7 @@ mod build_tests {
         with_summary.ingest(prop(b"SUMMARY", b":Reminder")).unwrap();
         assert!(matches!(
             with_summary.build(),
-            Err(CalendarError::RequiresAtLeastOne(
+            Err(ComponentError::RequiresAtLeastOne(
                 "ACTION EMAIL",
                 "ATTENDEE"
             ))
@@ -1757,7 +1747,7 @@ mod build_tests {
         b.ingest(prop(b"TZID", b":America/New_York")).unwrap();
         assert!(matches!(
             b.build(),
-            Err(CalendarError::RequiresAtLeastOne(
+            Err(ComponentError::RequiresAtLeastOne(
                 "VTIMEZONE",
                 "STANDARD or DAYLIGHT"
             ))
@@ -1776,7 +1766,7 @@ mod build_tests {
     fn tz_prop_requires_dtstart_and_offsets() {
         assert!(matches!(
             TzPropBuilder::new().build(),
-            Err(CalendarError::MissingField("DTSTART"))
+            Err(ComponentError::MissingField("DTSTART"))
         ));
     }
 
@@ -1784,7 +1774,7 @@ mod build_tests {
     fn calendar_requires_prodid_version_and_a_component() {
         assert!(matches!(
             CalendarBuilder::new().build(),
-            Err(CalendarError::MissingField("PRODID"))
+            Err(ComponentError::MissingField("PRODID"))
         ));
 
         let mut with_prodid = CalendarBuilder::new();
@@ -1793,7 +1783,7 @@ mod build_tests {
         );
         assert!(matches!(
             with_prodid.build(),
-            Err(CalendarError::MissingField("VERSION"))
+            Err(ComponentError::MissingField("VERSION"))
         ));
 
         let mut with_version = CalendarBuilder::new();
@@ -1804,7 +1794,7 @@ mod build_tests {
             Some(Version::try_from(b":2.0".as_slice()).unwrap());
         assert!(matches!(
             with_version.build(),
-            Err(CalendarError::RequiresAtLeastOne(
+            Err(ComponentError::RequiresAtLeastOne(
                 "VCALENDAR",
                 "calendar component"
             ))
