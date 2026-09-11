@@ -4,7 +4,19 @@ mod token;
 mod validator;
 use parser::{ParseError, ParseResult};
 
-use crate::{Calendar, properties::*};
+use crate::{
+    Calendar,
+    calendar::Component as CalComponent,
+    components::{
+        alarm::Alarm,
+        event::Event,
+        free_busy::FreeBusy,
+        journal::Journal,
+        timezone::{Timezone, TzProp},
+        todo::Todo,
+    },
+    properties::*,
+};
 
 /// Splits a Bytes vector by given pattern
 pub(crate) fn split_once(b: &[u8], needle: u8) -> ParseResult<(&[u8], &[u8])> {
@@ -149,6 +161,21 @@ impl Component {
             }),
             _ => Err(ParseError::UnexpectedComponent("STANDARD/DAYLIGHT")),
         }
+    }
+
+    /// Builds this builder into its finished [`CalComponent`], validating
+    /// whatever couldn't be checked property-by-property during ingest.
+    /// `has_method` is only consulted by [`EventBuilder::build`] (RFC 5545
+    /// §3.6.1's `DTSTART`/`METHOD` interaction) — every other component
+    /// ignores it.
+    fn build(self, has_method: bool) -> Result<CalComponent, CalendarError> {
+        Ok(match self {
+            Self::Event(b) => CalComponent::Event(b.build(has_method)?),
+            Self::Todo(b) => CalComponent::Todo(b.build()?),
+            Self::Journal(b) => CalComponent::Journal(b.build()?),
+            Self::FreeBusy(b) => CalComponent::FreeBusy(b.build()?),
+            Self::Timezone(b) => CalComponent::Timezone(b.build()?),
+        })
     }
 }
 
@@ -623,7 +650,37 @@ impl CalendarBuilder {
     }
 
     fn build(self) -> Result<Calendar, CalendarError> {
-        todo!()
+        let prodid = self
+            .prodid
+            .ok_or(CalendarError::MissingField("PRODID"))?;
+        let version = self
+            .version
+            .ok_or(CalendarError::MissingField("VERSION"))?;
+        if self.components.is_empty() {
+            return Err(CalendarError::RequiresAtLeastOne(
+                "VCALENDAR",
+                "calendar component",
+            ));
+        }
+        // DTSTART is only REQUIRED on a VEVENT when METHOD is absent (RFC
+        // 5545 §3.6.1) — every component needs to know this to validate
+        // itself, so it's threaded down rather than re-checked per-event.
+        let has_method = self.method.is_some();
+        let components = self
+            .components
+            .into_iter()
+            .map(|c| c.build(has_method))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Calendar {
+            prodid,
+            version,
+            calscale: self.calscale,
+            method: self.method,
+            xprop: self.xprop,
+            iana: self.iana,
+            components,
+        })
     }
 }
 
@@ -631,6 +688,33 @@ impl CalendarBuilder {
 pub(crate) enum CalendarError {
     #[error("Missing field: {0}")]
     MissingField(&'static str),
+
+    /// Two properties that RFC 5545 says MUST NOT both appear in the same
+    /// component (e.g. `DTEND`/`DURATION`) were both present.
+    #[error("{0} and {1} MUST NOT both be specified in the same component")]
+    MutuallyExclusive(&'static str, &'static str),
+
+    /// A property that RFC 5545 only allows conditional on another being
+    /// present (e.g. `DURATION` requiring `DTSTART` in a `VTODO`) showed up
+    /// without it.
+    #[error("{0} MUST NOT be specified without {1}")]
+    Requires(&'static str, &'static str),
+
+    /// Two properties that RFC 5545 says MUST occur together or not at all
+    /// (e.g. `DURATION`/`REPEAT` in a `VALARM`) had only one present.
+    #[error("{0} and {1} MUST occur together or not at all")]
+    RequiresTogether(&'static str, &'static str),
+
+    /// A component/property required at least one of some other property,
+    /// but none were present (e.g. `VALARM` with `ACTION:EMAIL` requires at
+    /// least one `ATTENDEE`).
+    #[error("{0} requires at least one {1}")]
+    RequiresAtLeastOne(&'static str, &'static str),
+
+    /// A property RFC 5545 disallows for a particular alternative grammar
+    /// showed up anyway (e.g. `ATTACH` in a `VALARM` with `ACTION:DISPLAY`).
+    #[error("{0} MUST NOT be specified when {1}")]
+    NotAllowed(&'static str, &'static str),
 }
 
 #[derive(Debug, Default)]
@@ -678,6 +762,62 @@ struct EventBuilder {
 impl EventBuilder {
     fn new() -> Self {
         Self::default()
+    }
+
+    /// Validates the cross-field rules RFC 5545 §3.6.1 places on `VEVENT`
+    /// and assembles the finished [`Event`]. `has_method` is whether the
+    /// enclosing `VCALENDAR` specified a `METHOD` property — `DTSTART` is
+    /// only REQUIRED here when it didn't.
+    fn build(self, has_method: bool) -> Result<Event, CalendarError> {
+        if !has_method && self.dtstart.is_none() {
+            return Err(CalendarError::MissingField("DTSTART"));
+        }
+        if self.dtend.is_some() && self.duration.is_some() {
+            return Err(CalendarError::MutuallyExclusive("DTEND", "DURATION"));
+        }
+        let alarms = self
+            .alarms
+            .into_iter()
+            .map(AlarmBuilder::build)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Event {
+            dtstamp: self
+                .dtstamp
+                .ok_or(CalendarError::MissingField("DTSTAMP"))?,
+            uid: self.uid.ok_or(CalendarError::MissingField("UID"))?,
+            dtstart: self.dtstart,
+            class: self.class,
+            created: self.created,
+            description: self.description,
+            geo: self.geo,
+            last_mod: self.last_mod,
+            location: self.location,
+            organizer: self.organizer,
+            priority: self.priority,
+            seq: self.seq,
+            status: self.status,
+            summary: self.summary,
+            transp: self.transp,
+            url: self.url,
+            recurid: self.recurid,
+            rrule: self.rrule,
+            dtend: self.dtend,
+            duration: self.duration,
+            attach: self.attach,
+            attendee: self.attendee,
+            categories: self.categories,
+            comment: self.comment,
+            contact: self.contact,
+            exdate: self.exdate,
+            rstatus: self.rstatus,
+            related: self.related,
+            resources: self.resources,
+            rdate: self.rdate,
+            xprop: self.xprop,
+            iana: self.iana,
+            alarms,
+        })
     }
 }
 
@@ -766,6 +906,61 @@ impl TodoBuilder {
     fn new() -> Self {
         Self::default()
     }
+
+    /// Validates the cross-field rules RFC 5545 §3.6.2 places on `VTODO`
+    /// and assembles the finished [`Todo`].
+    fn build(self) -> Result<Todo, CalendarError> {
+        if self.due.is_some() && self.duration.is_some() {
+            return Err(CalendarError::MutuallyExclusive("DUE", "DURATION"));
+        }
+        if self.duration.is_some() && self.dtstart.is_none() {
+            return Err(CalendarError::Requires("DURATION", "DTSTART"));
+        }
+        let alarms = self
+            .alarms
+            .into_iter()
+            .map(AlarmBuilder::build)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Todo {
+            dtstamp: self
+                .dtstamp
+                .ok_or(CalendarError::MissingField("DTSTAMP"))?,
+            uid: self.uid.ok_or(CalendarError::MissingField("UID"))?,
+            class: self.class,
+            completed: self.completed,
+            created: self.created,
+            description: self.description,
+            dtstart: self.dtstart,
+            geo: self.geo,
+            last_mod: self.last_mod,
+            location: self.location,
+            organizer: self.organizer,
+            percent: self.percent,
+            priority: self.priority,
+            recur_id: self.recur_id,
+            seq: self.seq,
+            status: self.status,
+            summary: self.summary,
+            url: self.url,
+            rrule: self.rrule,
+            due: self.due,
+            duration: self.duration,
+            attach: self.attach,
+            attendee: self.attendee,
+            categories: self.categories,
+            comment: self.comment,
+            contact: self.contact,
+            exdate: self.exdate,
+            rstatus: self.rstatus,
+            related: self.related,
+            resources: self.resources,
+            rdate: self.rdate,
+            xprop: self.xprop,
+            iana: self.iana,
+            alarms,
+        })
+    }
 }
 
 impl PropertyIngest for TodoBuilder {
@@ -843,6 +1038,105 @@ impl AlarmBuilder {
     fn new() -> Self {
         Self::default()
     }
+
+    /// Validates the cross-field rules RFC 5545 §3.6.6 places on `VALARM`
+    /// and assembles the finished [`Alarm`]. `ACTION` selects which of the
+    /// three alternative grammars (`audioprop`/`dispprop`/`emailprop`)
+    /// applies — everything beyond "`ACTION` and `TRIGGER` are both
+    /// required" is specific to that alternative.
+    fn build(self) -> Result<Alarm, CalendarError> {
+        let action = self
+            .action
+            .ok_or(CalendarError::MissingField("ACTION"))?;
+        let trigger = self
+            .trigger
+            .ok_or(CalendarError::MissingField("TRIGGER"))?;
+        if self.duration.is_some() != self.repeat.is_some() {
+            return Err(CalendarError::RequiresTogether("DURATION", "REPEAT"));
+        }
+
+        match action.kind() {
+            ActionEnum::Audio => {
+                if self.description.is_some() {
+                    return Err(CalendarError::NotAllowed(
+                        "DESCRIPTION",
+                        "ACTION is AUDIO",
+                    ));
+                }
+                if self.summary.is_some() {
+                    return Err(CalendarError::NotAllowed(
+                        "SUMMARY",
+                        "ACTION is AUDIO",
+                    ));
+                }
+                if !self.attendee.is_empty() {
+                    return Err(CalendarError::NotAllowed(
+                        "ATTENDEE",
+                        "ACTION is AUDIO",
+                    ));
+                }
+                if self.attach.len() > 1 {
+                    return Err(CalendarError::NotAllowed(
+                        "more than one ATTACH",
+                        "ACTION is AUDIO",
+                    ));
+                }
+            }
+            ActionEnum::Display => {
+                if self.description.is_none() {
+                    return Err(CalendarError::MissingField("DESCRIPTION"));
+                }
+                if self.summary.is_some() {
+                    return Err(CalendarError::NotAllowed(
+                        "SUMMARY",
+                        "ACTION is DISPLAY",
+                    ));
+                }
+                if !self.attendee.is_empty() {
+                    return Err(CalendarError::NotAllowed(
+                        "ATTENDEE",
+                        "ACTION is DISPLAY",
+                    ));
+                }
+                if !self.attach.is_empty() {
+                    return Err(CalendarError::NotAllowed(
+                        "ATTACH",
+                        "ACTION is DISPLAY",
+                    ));
+                }
+            }
+            ActionEnum::Email => {
+                if self.description.is_none() {
+                    return Err(CalendarError::MissingField("DESCRIPTION"));
+                }
+                if self.summary.is_none() {
+                    return Err(CalendarError::MissingField("SUMMARY"));
+                }
+                if self.attendee.is_empty() {
+                    return Err(CalendarError::RequiresAtLeastOne(
+                        "ACTION EMAIL",
+                        "ATTENDEE",
+                    ));
+                }
+            }
+            // IANA/X-name actions aren't defined by RFC 5545 — only the
+            // common ACTION/TRIGGER/DURATION+REPEAT rules above apply.
+            ActionEnum::Iana(_) | ActionEnum::XName(_) => {}
+        }
+
+        Ok(Alarm {
+            action,
+            trigger,
+            duration: self.duration,
+            repeat: self.repeat,
+            description: self.description,
+            summary: self.summary,
+            attendee: self.attendee,
+            attach: self.attach,
+            xprop: self.xprop,
+            iana: self.iana,
+        })
+    }
 }
 
 impl PropertyIngest for AlarmBuilder {
@@ -866,6 +1160,28 @@ impl PropertyIngest for AlarmBuilder {
 impl FreeBusyBuilder {
     fn new() -> Self {
         Self::default()
+    }
+
+    /// Validates the cross-field rules RFC 5545 §3.6.4 places on
+    /// `VFREEBUSY` and assembles the finished [`FreeBusy`].
+    fn build(self) -> Result<FreeBusy, CalendarError> {
+        Ok(FreeBusy {
+            dtstamp: self
+                .dtstamp
+                .ok_or(CalendarError::MissingField("DTSTAMP"))?,
+            uid: self.uid.ok_or(CalendarError::MissingField("UID"))?,
+            contact: self.contact,
+            dtstart: self.dtstart,
+            dtend: self.dtend,
+            organizer: self.organizer,
+            url: self.url,
+            attendee: self.attendee,
+            comment: self.comment,
+            freebusy: self.freebusy,
+            rstatus: self.rstatus,
+            xprop: self.xprop,
+            iana: self.iana,
+        })
     }
 }
 
@@ -892,6 +1208,40 @@ impl PropertyIngest for FreeBusyBuilder {
 impl JournalBuilder {
     fn new() -> Self {
         Self::default()
+    }
+
+    /// Validates the cross-field rules RFC 5545 §3.6.3 places on
+    /// `VJOURNAL` and assembles the finished [`Journal`].
+    fn build(self) -> Result<Journal, CalendarError> {
+        Ok(Journal {
+            dtstamp: self
+                .dtstamp
+                .ok_or(CalendarError::MissingField("DTSTAMP"))?,
+            uid: self.uid.ok_or(CalendarError::MissingField("UID"))?,
+            class: self.class,
+            created: self.created,
+            dtstart: self.dtstart,
+            last_mod: self.last_mod,
+            organizer: self.organizer,
+            recurid: self.recurid,
+            seq: self.seq,
+            status: self.status,
+            summary: self.summary,
+            url: self.url,
+            rrule: self.rrule,
+            attach: self.attach,
+            attendee: self.attendee,
+            categories: self.categories,
+            comment: self.comment,
+            contact: self.contact,
+            description: self.description,
+            exdate: self.exdate,
+            related: self.related,
+            rdate: self.rdate,
+            rstatus: self.rstatus,
+            xprop: self.xprop,
+            iana: self.iana,
+        })
     }
 }
 
@@ -993,6 +1343,40 @@ impl TimezoneBuilder {
     fn new() -> Self {
         Self::default()
     }
+
+    /// Validates the cross-field rules RFC 5545 §3.6.5 places on
+    /// `VTIMEZONE` and assembles the finished [`Timezone`]. At least one
+    /// `STANDARD` or `DAYLIGHT` sub-component is required — that can only
+    /// be checked once every nested sub-component has been seen, hence
+    /// here rather than in `ingest`.
+    fn build(self) -> Result<Timezone, CalendarError> {
+        if self.standardc.is_empty() && self.daylightc.is_empty() {
+            return Err(CalendarError::RequiresAtLeastOne(
+                "VTIMEZONE",
+                "STANDARD or DAYLIGHT",
+            ));
+        }
+        let standardc = self
+            .standardc
+            .into_iter()
+            .map(TzPropBuilder::build)
+            .collect::<Result<Vec<_>, _>>()?;
+        let daylightc = self
+            .daylightc
+            .into_iter()
+            .map(TzPropBuilder::build)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Timezone {
+            tzid: self.tzid.ok_or(CalendarError::MissingField("TZID"))?,
+            last_mod: self.last_mod,
+            tz_url: self.tzurl,
+            standardc,
+            daylightc,
+            xprop: self.xprop,
+            iana: self.iana,
+        })
+    }
 }
 
 impl PropertyIngest for TimezoneBuilder {
@@ -1039,6 +1423,28 @@ impl TzPropBuilder {
     fn new() -> Self {
         Self::default()
     }
+
+    /// Validates the `tzprop` grammar's required fields (RFC 5545 §3.6.5)
+    /// and assembles the finished [`TzProp`].
+    fn build(self) -> Result<TzProp, CalendarError> {
+        Ok(TzProp {
+            dtstart: self
+                .dtstart
+                .ok_or(CalendarError::MissingField("DTSTART"))?,
+            tz_offset_to: self
+                .tz_offset_to
+                .ok_or(CalendarError::MissingField("TZOFFSETTO"))?,
+            tz_offset_from: self
+                .tz_offset_from
+                .ok_or(CalendarError::MissingField("TZOFFSETFROM"))?,
+            rrule: self.rrule,
+            comment: self.comment,
+            rdate: self.rdate,
+            tzname: self.tzname,
+            xprop: self.xprop,
+            iana: self.iana,
+        })
+    }
 }
 
 impl PropertyIngest for TzPropBuilder {
@@ -1059,5 +1465,272 @@ impl PropertyIngest for TzPropBuilder {
             Property::Iana(v) => Ok(self.iana.push(v)),
             _ => Err(ParseError::UnexpectedProperty),
         }
+    }
+}
+
+#[cfg(test)]
+mod build_tests {
+    use super::*;
+
+    fn prop(name: &[u8], remainder: &[u8]) -> Property {
+        Property::parse(name, remainder).unwrap()
+    }
+
+    fn minimal_event() -> EventBuilder {
+        let mut b = EventBuilder::new();
+        b.ingest(prop(b"DTSTAMP", b":19970901T130000Z")).unwrap();
+        b.ingest(prop(b"UID", b":123@example.com")).unwrap();
+        b.ingest(prop(b"DTSTART", b":19970903T163000Z")).unwrap();
+        b
+    }
+
+    #[test]
+    fn event_requires_dtstamp() {
+        let mut b = minimal_event();
+        b.dtstamp = None;
+        assert!(matches!(
+            b.build(true),
+            Err(CalendarError::MissingField("DTSTAMP"))
+        ));
+    }
+
+    #[test]
+    fn event_requires_uid() {
+        let mut b = minimal_event();
+        b.uid = None;
+        assert!(matches!(
+            b.build(true),
+            Err(CalendarError::MissingField("UID"))
+        ));
+    }
+
+    #[test]
+    fn event_dtstart_required_unless_method_present() {
+        let mut b = minimal_event();
+        b.dtstart = None;
+        assert!(matches!(
+            b.build(false),
+            Err(CalendarError::MissingField("DTSTART"))
+        ));
+        assert!(minimal_event().build(true).is_ok());
+    }
+
+    #[test]
+    fn event_dtend_and_duration_are_mutually_exclusive() {
+        let mut b = minimal_event();
+        b.ingest(prop(b"DTEND", b":19970903T190000Z")).unwrap();
+        b.ingest(prop(b"DURATION", b":PT1H")).unwrap();
+        assert!(matches!(
+            b.build(true),
+            Err(CalendarError::MutuallyExclusive("DTEND", "DURATION"))
+        ));
+    }
+
+    #[test]
+    fn event_builds_with_only_required_fields() {
+        let event = minimal_event().build(true).unwrap();
+        assert!(event.dtstart.is_some());
+        assert!(event.alarms.is_empty());
+    }
+
+    fn minimal_todo() -> TodoBuilder {
+        let mut b = TodoBuilder::new();
+        b.ingest(prop(b"DTSTAMP", b":19970901T130000Z")).unwrap();
+        b.ingest(prop(b"UID", b":123@example.com")).unwrap();
+        b
+    }
+
+    #[test]
+    fn todo_due_and_duration_are_mutually_exclusive() {
+        let mut b = minimal_todo();
+        b.ingest(prop(b"DTSTART", b":19970901T130000Z")).unwrap();
+        b.ingest(prop(b"DUE", b":19970902T130000Z")).unwrap();
+        b.ingest(prop(b"DURATION", b":PT1H")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(CalendarError::MutuallyExclusive("DUE", "DURATION"))
+        ));
+    }
+
+    #[test]
+    fn todo_duration_requires_dtstart() {
+        let mut b = minimal_todo();
+        b.ingest(prop(b"DURATION", b":PT1H")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(CalendarError::Requires("DURATION", "DTSTART"))
+        ));
+    }
+
+    #[test]
+    fn todo_builds_with_only_required_fields() {
+        assert!(minimal_todo().build().is_ok());
+    }
+
+    fn minimal_alarm(action: &[u8]) -> AlarmBuilder {
+        let mut b = AlarmBuilder::new();
+        b.ingest(prop(b"ACTION", action)).unwrap();
+        b.ingest(prop(b"TRIGGER", b":-PT15M")).unwrap();
+        b
+    }
+
+    #[test]
+    fn alarm_requires_action_and_trigger() {
+        assert!(matches!(
+            AlarmBuilder::new().build(),
+            Err(CalendarError::MissingField("ACTION"))
+        ));
+
+        let mut with_action = AlarmBuilder::new();
+        with_action.ingest(prop(b"ACTION", b":AUDIO")).unwrap();
+        assert!(matches!(
+            with_action.build(),
+            Err(CalendarError::MissingField("TRIGGER"))
+        ));
+    }
+
+    #[test]
+    fn alarm_duration_and_repeat_must_occur_together() {
+        let mut b = minimal_alarm(b":AUDIO");
+        b.ingest(prop(b"DURATION", b":PT15M")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(CalendarError::RequiresTogether("DURATION", "REPEAT"))
+        ));
+    }
+
+    #[test]
+    fn alarm_audio_rejects_description() {
+        let mut b = minimal_alarm(b":AUDIO");
+        b.ingest(prop(b"DESCRIPTION", b":Beep")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(CalendarError::NotAllowed("DESCRIPTION", _))
+        ));
+    }
+
+    #[test]
+    fn alarm_display_requires_description() {
+        let b = minimal_alarm(b":DISPLAY");
+        assert!(matches!(
+            b.build(),
+            Err(CalendarError::MissingField("DESCRIPTION"))
+        ));
+    }
+
+    #[test]
+    fn alarm_email_requires_description_summary_and_attendee() {
+        assert!(matches!(
+            minimal_alarm(b":EMAIL").build(),
+            Err(CalendarError::MissingField("DESCRIPTION"))
+        ));
+
+        let mut with_description = minimal_alarm(b":EMAIL");
+        with_description
+            .ingest(prop(b"DESCRIPTION", b":Reminder"))
+            .unwrap();
+        assert!(matches!(
+            with_description.build(),
+            Err(CalendarError::MissingField("SUMMARY"))
+        ));
+
+        let mut with_summary = minimal_alarm(b":EMAIL");
+        with_summary
+            .ingest(prop(b"DESCRIPTION", b":Reminder"))
+            .unwrap();
+        with_summary.ingest(prop(b"SUMMARY", b":Reminder")).unwrap();
+        assert!(matches!(
+            with_summary.build(),
+            Err(CalendarError::RequiresAtLeastOne("ACTION EMAIL", "ATTENDEE"))
+        ));
+
+        let mut complete = minimal_alarm(b":EMAIL");
+        complete.ingest(prop(b"DESCRIPTION", b":Reminder")).unwrap();
+        complete.ingest(prop(b"SUMMARY", b":Reminder")).unwrap();
+        complete
+            .ingest(prop(b"ATTENDEE", b":mailto:jane@example.com"))
+            .unwrap();
+        assert!(complete.build().is_ok());
+    }
+
+    #[test]
+    fn alarm_audio_builds_with_only_required_fields() {
+        assert!(minimal_alarm(b":AUDIO").build().is_ok());
+    }
+
+    fn minimal_tz_prop() -> TzPropBuilder {
+        let mut b = TzPropBuilder::new();
+        b.ingest(prop(b"DTSTART", b":19710101T020000")).unwrap();
+        b.ingest(prop(b"TZOFFSETFROM", b":-0400")).unwrap();
+        b.ingest(prop(b"TZOFFSETTO", b":-0500")).unwrap();
+        b
+    }
+
+    #[test]
+    fn timezone_requires_at_least_one_observance() {
+        let mut b = TimezoneBuilder::new();
+        b.ingest(prop(b"TZID", b":America/New_York")).unwrap();
+        assert!(matches!(
+            b.build(),
+            Err(CalendarError::RequiresAtLeastOne(
+                "VTIMEZONE",
+                "STANDARD or DAYLIGHT"
+            ))
+        ));
+    }
+
+    #[test]
+    fn timezone_builds_with_one_standard_observance() {
+        let mut b = TimezoneBuilder::new();
+        b.ingest(prop(b"TZID", b":America/New_York")).unwrap();
+        b.standardc.push(minimal_tz_prop());
+        assert!(b.build().is_ok());
+    }
+
+    #[test]
+    fn tz_prop_requires_dtstart_and_offsets() {
+        assert!(matches!(
+            TzPropBuilder::new().build(),
+            Err(CalendarError::MissingField("DTSTART"))
+        ));
+    }
+
+    #[test]
+    fn calendar_requires_prodid_version_and_a_component() {
+        assert!(matches!(
+            CalendarBuilder::new().build(),
+            Err(CalendarError::MissingField("PRODID"))
+        ));
+
+        let mut with_prodid = CalendarBuilder::new();
+        with_prodid.prodid = Some(
+            ProductIdentifier::try_from(b":-//example//EN".as_slice()).unwrap(),
+        );
+        assert!(matches!(
+            with_prodid.build(),
+            Err(CalendarError::MissingField("VERSION"))
+        ));
+
+        let mut with_version = CalendarBuilder::new();
+        with_version.prodid = Some(
+            ProductIdentifier::try_from(b":-//example//EN".as_slice()).unwrap(),
+        );
+        with_version.version =
+            Some(Version::try_from(b":2.0".as_slice()).unwrap());
+        assert!(matches!(
+            with_version.build(),
+            Err(CalendarError::RequiresAtLeastOne(
+                "VCALENDAR",
+                "calendar component"
+            ))
+        ));
+
+        let mut complete = CalendarBuilder::new();
+        complete.prodid = Some(
+            ProductIdentifier::try_from(b":-//example//EN".as_slice()).unwrap(),
+        );
+        complete.version = Some(Version::try_from(b":2.0".as_slice()).unwrap());
+        complete.components.push(minimal_event().into());
+        assert!(complete.build().is_ok());
     }
 }

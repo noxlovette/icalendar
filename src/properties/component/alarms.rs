@@ -35,6 +35,15 @@ pub enum ActionEnum {
 
 impl_try_from_bytes!(Action, ActionEnum);
 
+impl Action {
+    /// Which `audioprop`/`dispprop`/`emailprop` alternative (RFC 5545
+    /// §3.6.6) this action selects — used by `AlarmBuilder::build` to check
+    /// the alternative-specific requirements once `ACTION` is known.
+    pub(crate) fn kind(&self) -> &ActionEnum {
+        &self.value
+    }
+}
+
 impl TryFrom<&[u8]> for ActionEnum {
     type Error = ParseError;
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {

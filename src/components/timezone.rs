@@ -86,24 +86,29 @@ use crate::properties::{
 /// [Section 3.6.5](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6.5)
 #[derive(Debug)]
 pub struct Timezone {
-    tzid: TimeZoneIdentifier,
-    last_mod: Option<LastModified>,
-    tz_url: Option<TimeZoneUrl>,
-    standatdc: TzProp,
-    daylightc: TzProp,
-    xprop: Xprop,
-    iana: Iana,
+    pub(crate) tzid: TimeZoneIdentifier,
+    pub(crate) last_mod: Option<LastModified>,
+    pub(crate) tz_url: Option<TimeZoneUrl>,
+    /// At least one of `standardc`/`daylightc` MUST be non-empty (RFC 5545
+    /// §3.6.5) — enforced at build time, since neither list alone can be
+    /// required by the type.
+    pub(crate) standardc: Vec<TzProp>,
+    pub(crate) daylightc: Vec<TzProp>,
+    pub(crate) xprop: Vec<Xprop>,
+    pub(crate) iana: Vec<Iana>,
 }
 
+/// The `tzprop` grammar shared by `STANDARD`/`DAYLIGHT` sub-components (RFC
+/// 5545 §3.6.5).
 #[derive(Debug)]
-struct TzProp {
-    dtstart: DateTimeStart,
-    tz_offset_to: TimeZoneOffsetTo,
-    tz_offset_from: TimeZoneOffsetFrom,
-    rrule: Option<RRule>,
-    comment: Comment,
-    rdate: RecurrenceDateTimes,
-    tzname: TimeZoneName,
-    xprop: Xprop,
-    iana: Iana,
+pub(crate) struct TzProp {
+    pub(crate) dtstart: DateTimeStart,
+    pub(crate) tz_offset_to: TimeZoneOffsetTo,
+    pub(crate) tz_offset_from: TimeZoneOffsetFrom,
+    pub(crate) rrule: Option<RRule>,
+    pub(crate) comment: Vec<Comment>,
+    pub(crate) rdate: Vec<RecurrenceDateTimes>,
+    pub(crate) tzname: Vec<TimeZoneName>,
+    pub(crate) xprop: Vec<Xprop>,
+    pub(crate) iana: Vec<Iana>,
 }

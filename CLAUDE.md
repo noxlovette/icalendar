@@ -12,6 +12,49 @@ Components MUST NOT USE ANYTHING OTHER THAN PROPERTIES
 
 Properties MUST have a value and a params struct fields. The value field MUST contain only values from value.rs. Params must only contain values from params.rs, no exceptions
 
+## Parser & builder architecture
+
+The parser (`src/ast/parser.rs`) is recursive-descent, single-token lookahead.
+A few conventions came out of building it that future work on it MUST follow:
+
+- `Property::parse(name, remainder)` is the single place that maps a property
+  keyword to its typed `Property` variant (backed by `PROPERTY_DISPATCH`, a
+  `phf::Map`). An unrecognized name isn't an error — it falls back to
+  `Xprop`/`Iana`.
+- Each component builder implements `PropertyIngest`
+  (`fn ingest(&mut self, p: Property) -> ParseResult<()>`) and owns the
+  decision of what properties are legal for *it*. Neither the parser nor
+  `Component::ingest` inspects a property to decide legality — they just
+  parse a `Property` and hand it to the builder, which matches it against
+  its own RFC-defined property set and errors on anything else.
+- `Component` (wrapping `EventBuilder`/`TodoBuilder`/`JournalBuilder`/
+  `FreeBusyBuilder`/`TimezoneBuilder`) models only what RFC 5545 allows
+  directly under `VCALENDAR`. Never add a variant for something that can
+  only appear nested inside another component (`VALARM`, `STANDARD`,
+  `DAYLIGHT`) — that makes an illegal state representable. A sub-component
+  gets its own builder type instead, referenced only as a field on whichever
+  builder(s) may legally contain it (e.g. `EventBuilder.alarms:
+  Vec<AlarmBuilder>`, `TimezoneBuilder.standardc`/`daylightc:
+  Vec<TzPropBuilder>`).
+- A sub-component's own `Parser` method (`alarm()`, `tz_observance()`) is a
+  sibling to `component()`, not a recursive call into it — each nested
+  grammar production has its own alphabet of legal properties and its own
+  builder type, so forcing them through one polymorphic function isn't
+  worth it. When `component()`'s loop hits a nested `BEGIN`, it dispatches
+  by peeking the sub-component's own name (same name-based dispatch as
+  `Property::parse` and `component()`'s own top-level match). Whether that
+  name is legal *under this particular parent* is then decided by the
+  parent's own `ingest_*` method (e.g. `Component::ingest_alarm` rejects a
+  `VALARM` under anything but `VEVENT`/`VTODO`), not by the parser.
+- All validation happens at `build()`, not during ingest. Ingest only
+  catches what's local to a single property as it arrives — a singleton
+  property (`DTSTART`, `UID`, ...) occurring twice (see `set_once`).
+  Everything that needs the full picture — mutual exclusion between two
+  properties (`DTEND`/`DURATION`), a property requiring another to also be
+  present, a component needing at least one of some sub-component
+  (`VTIMEZONE` needs ≥1 `STANDARD`/`DAYLIGHT`) — is deferred to `build()`,
+  which runs once ingest has seen everything.
+
 ## Testing philosophy
 
 Tests are written test-driven: they assert what the code's behavior MUST be per RFC 5545 (or the type's documented contract), not what the current implementation happens to do. Never write a test by running the code and copying its output into the assertion — that encodes bugs as spec. If a test fails against current code, the test is correct and the code is wrong; fix the code, don't loosen the test.

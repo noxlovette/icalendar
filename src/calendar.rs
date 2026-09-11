@@ -1,5 +1,11 @@
-use crate::properties::{
-    CalendarScale, Iana, Method, ProductIdentifier, Version, Xprop,
+use crate::{
+    components::{
+        event::Event, free_busy::FreeBusy, journal::Journal,
+        timezone::Timezone, todo::Todo,
+    },
+    properties::{
+        CalendarScale, Iana, Method, ProductIdentifier, Version, Xprop,
+    },
 };
 
 /// The Calendaring and Scheduling Core Object is a collection of
@@ -34,10 +40,31 @@ use crate::properties::{
 /// drop any components as that can lead to user data loss.
 #[derive(Debug)]
 pub struct Calendar {
-    prodid: ProductIdentifier,
-    version: Version,
-    calscale: Option<CalendarScale>,
-    method: Option<Method>,
-    xprop: Vec<Xprop>,
-    iana: Vec<Iana>,
+    pub(crate) prodid: ProductIdentifier,
+    pub(crate) version: Version,
+    pub(crate) calscale: Option<CalendarScale>,
+    pub(crate) method: Option<Method>,
+    pub(crate) xprop: Vec<Xprop>,
+    pub(crate) iana: Vec<Iana>,
+    pub(crate) components: Vec<Component>,
+}
+
+/// The calendar component carried by a built [`Calendar`] — the built
+/// counterpart of [`crate::ast::Component`], which wraps the in-progress
+/// builders instead. One variant per component type RFC 5545 §3.6 allows
+/// directly under `VCALENDAR`; see [`crate::ast`]'s module docs for why a
+/// sub-component (`VALARM`, `STANDARD`, `DAYLIGHT`) never gets a variant
+/// here.
+#[derive(Debug)]
+pub(crate) enum Component {
+    /// A scheduled event (`VEVENT`).
+    Event(Event),
+    /// A to-do task (`VTODO`).
+    Todo(Todo),
+    /// A journal entry (`VJOURNAL`).
+    Journal(Journal),
+    /// Free/busy time information (`VFREEBUSY`).
+    FreeBusy(FreeBusy),
+    /// Time zone definition (`VTIMEZONE`).
+    Timezone(Timezone),
 }

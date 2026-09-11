@@ -1,0 +1,51 @@
+use crate::properties::{
+    Action, Attachment, Attendee, Description, Duration, Iana, Repeat, Summary,
+    Trigger, Xprop,
+};
+
+/// A "VALARM" calendar component is a grouping of component
+/// properties that is a reminder or alarm for an event or a to-do.
+/// For example, it may be used to define a reminder for a pending
+/// event or an overdue to-do.
+///
+/// RFC 5545 actually splits this into three alternative property sets
+/// (`audioprop`/`dispprop`/`emailprop`, selected by [`Action`]'s value)
+/// each with its own required/optional/cardinality rules for
+/// `DESCRIPTION`, `SUMMARY`, `ATTENDEE`, and `ATTACH`. This type holds the
+/// union of what's structurally possible across all three — which
+/// alternative applies, and whether a given `Alarm` satisfies it, is
+/// checked at build time once `ACTION` is known.
+///
+/// Example:
+///
+/// > BEGIN:VALARM
+/// >
+/// > TRIGGER;VALUE=DATE-TIME:19970317T133000Z
+/// >
+/// > REPEAT:4
+/// >
+/// > DURATION:PT15M
+/// >
+/// > ACTION:AUDIO
+/// >
+/// > ATTACH;FMTTYPE=audio/basic:ftp://example.com/pub/sounds/bell-01.aud
+/// >
+/// > END:VALARM
+/// >
+///
+/// [Section 3.6.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6.6)
+#[derive(Debug)]
+pub(crate) struct Alarm {
+    pub(crate) action: Action,
+    pub(crate) trigger: Trigger,
+    // DURATION and REPEAT are optional but MUST appear together (RFC 5545
+    // §3.6.6) — enforced at build time.
+    pub(crate) duration: Option<Duration>,
+    pub(crate) repeat: Option<Repeat>,
+    pub(crate) description: Option<Description>,
+    pub(crate) summary: Option<Summary>,
+    pub(crate) attendee: Vec<Attendee>,
+    pub(crate) attach: Vec<Attachment>,
+    pub(crate) xprop: Vec<Xprop>,
+    pub(crate) iana: Vec<Iana>,
+}
