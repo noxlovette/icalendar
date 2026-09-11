@@ -98,10 +98,47 @@ pub struct Timezone {
     pub(crate) iana: Vec<Iana>,
 }
 
+impl Timezone {
+    /// The `TZID` property.
+    pub fn tzid(&self) -> &TimeZoneIdentifier {
+        &self.tzid
+    }
+
+    /// The `LAST-MODIFIED` property, if present.
+    pub fn last_mod(&self) -> Option<&LastModified> {
+        self.last_mod.as_ref()
+    }
+
+    /// The `TZURL` property, if present.
+    pub fn tz_url(&self) -> Option<&TimeZoneUrl> {
+        self.tz_url.as_ref()
+    }
+
+    /// The `STANDARD` sub-components.
+    pub fn standardc(&self) -> &[TzProp] {
+        &self.standardc
+    }
+
+    /// The `DAYLIGHT` sub-components.
+    pub fn daylightc(&self) -> &[TzProp] {
+        &self.daylightc
+    }
+
+    /// The non-standard (`X-`) properties.
+    pub fn xprop(&self) -> &[Xprop] {
+        &self.xprop
+    }
+
+    /// The IANA-registered properties this crate doesn't otherwise model.
+    pub fn iana(&self) -> &[Iana] {
+        &self.iana
+    }
+}
+
 /// The `tzprop` grammar shared by `STANDARD`/`DAYLIGHT` sub-components (RFC
 /// 5545 §3.6.5).
 #[derive(Debug)]
-pub(crate) struct TzProp {
+pub struct TzProp {
     pub(crate) dtstart: DateTimeStart,
     pub(crate) tz_offset_to: TimeZoneOffsetTo,
     pub(crate) tz_offset_from: TimeZoneOffsetFrom,
@@ -111,4 +148,51 @@ pub(crate) struct TzProp {
     pub(crate) tzname: Vec<TimeZoneName>,
     pub(crate) xprop: Vec<Xprop>,
     pub(crate) iana: Vec<Iana>,
+}
+
+impl TzProp {
+    /// The `DTSTART` property.
+    pub fn dtstart(&self) -> &DateTimeStart {
+        &self.dtstart
+    }
+
+    /// The `TZOFFSETTO` property.
+    pub fn tz_offset_to(&self) -> &TimeZoneOffsetTo {
+        &self.tz_offset_to
+    }
+
+    /// The `TZOFFSETFROM` property.
+    pub fn tz_offset_from(&self) -> &TimeZoneOffsetFrom {
+        &self.tz_offset_from
+    }
+
+    /// The `RRULE` property, if present.
+    pub fn rrule(&self) -> Option<&RRule> {
+        self.rrule.as_ref()
+    }
+
+    /// The `COMMENT` properties.
+    pub fn comment(&self) -> &[Comment] {
+        &self.comment
+    }
+
+    /// The `RDATE` properties.
+    pub fn rdate(&self) -> &[RecurrenceDateTimes] {
+        &self.rdate
+    }
+
+    /// The `TZNAME` properties.
+    pub fn tzname(&self) -> &[TimeZoneName] {
+        &self.tzname
+    }
+
+    /// The non-standard (`X-`) properties.
+    pub fn xprop(&self) -> &[Xprop] {
+        &self.xprop
+    }
+
+    /// The IANA-registered properties this crate doesn't otherwise model.
+    pub fn iana(&self) -> &[Iana] {
+        &self.iana
+    }
 }

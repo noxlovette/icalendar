@@ -56,7 +56,7 @@ pub struct Calendar {
 /// sub-component (`VALARM`, `STANDARD`, `DAYLIGHT`) never gets a variant
 /// here.
 #[derive(Debug)]
-pub(crate) enum Component {
+pub enum Component {
     /// A scheduled event (`VEVENT`).
     Event(Event),
     /// A to-do task (`VTODO`).
@@ -67,4 +67,12 @@ pub(crate) enum Component {
     FreeBusy(FreeBusy),
     /// Time zone definition (`VTIMEZONE`).
     Timezone(Timezone),
+}
+
+impl Calendar {
+    /// The calendar components (`VEVENT`, `VTODO`, `VJOURNAL`, `VFREEBUSY`,
+    /// `VTIMEZONE`) carried by this `VCALENDAR` object.
+    pub fn components(&self) -> &[Component] {
+        &self.components
+    }
 }

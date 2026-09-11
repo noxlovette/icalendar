@@ -35,7 +35,7 @@ use crate::properties::{
 ///
 /// [Section 3.6.6](https://datatracker.ietf.org/doc/html/rfc5545#section-3.6.6)
 #[derive(Debug)]
-pub(crate) struct Alarm {
+pub struct Alarm {
     pub(crate) action: Action,
     pub(crate) trigger: Trigger,
     // DURATION and REPEAT are optional but MUST appear together (RFC 5545
@@ -48,4 +48,56 @@ pub(crate) struct Alarm {
     pub(crate) attach: Vec<Attachment>,
     pub(crate) xprop: Vec<Xprop>,
     pub(crate) iana: Vec<Iana>,
+}
+
+impl Alarm {
+    /// The `ACTION` property.
+    pub fn action(&self) -> &Action {
+        &self.action
+    }
+
+    /// The `TRIGGER` property.
+    pub fn trigger(&self) -> &Trigger {
+        &self.trigger
+    }
+
+    /// The `DURATION` property, if present.
+    pub fn duration(&self) -> Option<&Duration> {
+        self.duration.as_ref()
+    }
+
+    /// The `REPEAT` property, if present.
+    pub fn repeat(&self) -> Option<&Repeat> {
+        self.repeat.as_ref()
+    }
+
+    /// The `DESCRIPTION` property, if present.
+    pub fn description(&self) -> Option<&Description> {
+        self.description.as_ref()
+    }
+
+    /// The `SUMMARY` property, if present.
+    pub fn summary(&self) -> Option<&Summary> {
+        self.summary.as_ref()
+    }
+
+    /// The `ATTENDEE` properties.
+    pub fn attendee(&self) -> &[Attendee] {
+        &self.attendee
+    }
+
+    /// The `ATTACH` properties.
+    pub fn attach(&self) -> &[Attachment] {
+        &self.attach
+    }
+
+    /// The non-standard (`X-`) properties.
+    pub fn xprop(&self) -> &[Xprop] {
+        &self.xprop
+    }
+
+    /// The IANA-registered properties this crate doesn't otherwise model.
+    pub fn iana(&self) -> &[Iana] {
+        &self.iana
+    }
 }

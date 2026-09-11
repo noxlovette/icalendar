@@ -83,3 +83,130 @@ pub struct Journal {
     pub(crate) xprop: Vec<Xprop>,
     pub(crate) iana: Vec<Iana>,
 }
+
+impl Journal {
+    /// The `DTSTAMP` property.
+    pub fn dtstamp(&self) -> &DateTimeStamp {
+        &self.dtstamp
+    }
+
+    /// The `UID` property.
+    pub fn uid(&self) -> &Uid {
+        &self.uid
+    }
+
+    /// The `CLASS` property, if present.
+    pub fn class(&self) -> Option<&Classification> {
+        self.class.as_ref()
+    }
+
+    /// The `CREATED` property, if present.
+    pub fn created(&self) -> Option<&DateTimeCreated> {
+        self.created.as_ref()
+    }
+
+    /// The `DTSTART` property, if present.
+    pub fn dtstart(&self) -> Option<&DateTimeStart> {
+        self.dtstart.as_ref()
+    }
+
+    /// The `LAST-MODIFIED` property, if present.
+    pub fn last_mod(&self) -> Option<&LastModified> {
+        self.last_mod.as_ref()
+    }
+
+    /// The `ORGANIZER` property, if present.
+    pub fn organizer(&self) -> Option<&Organizer> {
+        self.organizer.as_ref()
+    }
+
+    /// The `RECURRENCE-ID` property, if present.
+    pub fn recurid(&self) -> Option<&RecurrenceId> {
+        self.recurid.as_ref()
+    }
+
+    /// The `SEQUENCE` property, if present.
+    pub fn seq(&self) -> Option<&Sequence> {
+        self.seq.as_ref()
+    }
+
+    /// The `STATUS` property, if present.
+    pub fn status(&self) -> Option<&Status> {
+        self.status.as_ref()
+    }
+
+    /// The `SUMMARY` property, if present.
+    pub fn summary(&self) -> Option<&Summary> {
+        self.summary.as_ref()
+    }
+
+    /// The `URL` property, if present.
+    pub fn url(&self) -> Option<&UniformResourceLocator> {
+        self.url.as_ref()
+    }
+
+    /// The `RRULE` property, if present.
+    pub fn rrule(&self) -> Option<&RRule> {
+        self.rrule.as_ref()
+    }
+
+    /// The `ATTACH` properties.
+    pub fn attach(&self) -> &[Attachment] {
+        &self.attach
+    }
+
+    /// The `ATTENDEE` properties.
+    pub fn attendee(&self) -> &[Attendee] {
+        &self.attendee
+    }
+
+    /// The `CATEGORIES` properties.
+    pub fn categories(&self) -> &[Categories] {
+        &self.categories
+    }
+
+    /// The `COMMENT` properties.
+    pub fn comment(&self) -> &[Comment] {
+        &self.comment
+    }
+
+    /// The `CONTACT` properties.
+    pub fn contact(&self) -> &[Contact] {
+        &self.contact
+    }
+
+    /// The `DESCRIPTION` properties.
+    pub fn description(&self) -> &[Description] {
+        &self.description
+    }
+
+    /// The `EXDATE` properties.
+    pub fn exdate(&self) -> &[ExceptionDateTimes] {
+        &self.exdate
+    }
+
+    /// The `RELATED-TO` properties.
+    pub fn related(&self) -> &[RelatedTo] {
+        &self.related
+    }
+
+    /// The `RDATE` properties.
+    pub fn rdate(&self) -> &[RecurrenceDateTimes] {
+        &self.rdate
+    }
+
+    /// The `REQUEST-STATUS` properties.
+    pub fn rstatus(&self) -> &[RequestStatus] {
+        &self.rstatus
+    }
+
+    /// The non-standard (`X-`) properties.
+    pub fn xprop(&self) -> &[Xprop] {
+        &self.xprop
+    }
+
+    /// The IANA-registered properties this crate doesn't otherwise model.
+    pub fn iana(&self) -> &[Iana] {
+        &self.iana
+    }
+}

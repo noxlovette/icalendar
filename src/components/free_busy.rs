@@ -96,3 +96,70 @@ pub struct FreeBusy {
     pub(crate) xprop: Vec<Xprop>,
     pub(crate) iana: Vec<Iana>,
 }
+
+impl FreeBusy {
+    /// The `DTSTAMP` property.
+    pub fn dtstamp(&self) -> &DateTimeStamp {
+        &self.dtstamp
+    }
+
+    /// The `UID` property.
+    pub fn uid(&self) -> &Uid {
+        &self.uid
+    }
+
+    /// The `CONTACT` property, if present.
+    pub fn contact(&self) -> Option<&Contact> {
+        self.contact.as_ref()
+    }
+
+    /// The `DTSTART` property, if present.
+    pub fn dtstart(&self) -> Option<&DateTimeStart> {
+        self.dtstart.as_ref()
+    }
+
+    /// The `DTEND` property, if present.
+    pub fn dtend(&self) -> Option<&DateTimeEnd> {
+        self.dtend.as_ref()
+    }
+
+    /// The `ORGANIZER` property, if present.
+    pub fn organizer(&self) -> Option<&Organizer> {
+        self.organizer.as_ref()
+    }
+
+    /// The `URL` property, if present.
+    pub fn url(&self) -> Option<&UniformResourceLocator> {
+        self.url.as_ref()
+    }
+
+    /// The `ATTENDEE` properties.
+    pub fn attendee(&self) -> &[Attendee] {
+        &self.attendee
+    }
+
+    /// The `COMMENT` properties.
+    pub fn comment(&self) -> &[Comment] {
+        &self.comment
+    }
+
+    /// The `FREEBUSY` properties.
+    pub fn freebusy(&self) -> &[FreeBusyTime] {
+        &self.freebusy
+    }
+
+    /// The `REQUEST-STATUS` properties.
+    pub fn rstatus(&self) -> &[RequestStatus] {
+        &self.rstatus
+    }
+
+    /// The non-standard (`X-`) properties.
+    pub fn xprop(&self) -> &[Xprop] {
+        &self.xprop
+    }
+
+    /// The IANA-registered properties this crate doesn't otherwise model.
+    pub fn iana(&self) -> &[Iana] {
+        &self.iana
+    }
+}
