@@ -15,6 +15,7 @@ struct DateTimeParams {
 
 impl TryFrom<&[u8]> for DateTimeParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
@@ -136,12 +137,14 @@ struct FreeBusyTimeParams {
 
 impl TryFrom<&[u8]> for FreeBusyTimeParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"FBTYPE" => {
-                    params.fb_time_type = split_once(segment, b'=')?.1.try_into()?
+                    params.fb_time_type =
+                        split_once(segment, b'=')?.1.try_into()?
                 }
                 _ => params.shared.absorb(segment)?,
             }
@@ -178,6 +181,7 @@ pub enum TranspValue {
 
 impl TryFrom<&[u8]> for TranspValue {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         match v {
             b"OPAQUE" => Ok(Self::Opaque),

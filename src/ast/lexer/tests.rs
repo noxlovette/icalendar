@@ -51,8 +51,8 @@ fn a_property_line_becomes_one_property_token() {
     // at all — the whole `*(";" param) ":" value` remainder is opaque to
     // it. That's `crate::properties::value_start`'s job, working directly
     // off these raw bytes.
-    let tokens = lex(b"RECURRENCE-ID;RANGE=THISANDFUTURE:20240402T100000\r\n")
-        .unwrap();
+    let tokens =
+        lex(b"RECURRENCE-ID;RANGE=THISANDFUTURE:20240402T100000\r\n").unwrap();
     assert_tokens(
         tokens,
         vec![
@@ -92,7 +92,12 @@ fn unrecognized_property_name_is_still_a_property_token() {
     assert_tokens(
         tokens,
         vec![
-            Token::new(TokenType::Property, b"X-CUSTOM-PROP", Some(b":value"), 0),
+            Token::new(
+                TokenType::Property,
+                b"X-CUSTOM-PROP",
+                Some(b":value"),
+                0,
+            ),
             Token::new(TokenType::Crlf, b"\r\n", None, 0),
             Token::new(TokenType::Eof, b"", None, 1),
         ],
@@ -104,10 +109,9 @@ fn property_remainder_may_contain_arbitrary_punctuation_unparsed() {
     // Semicolons, colons, commas and quotes inside the remainder all pass
     // through untouched raw bytes — the lexer performs no quote-aware
     // splitting of any kind.
-    let tokens = lex(
-        b"ATTENDEE;DELEGATED-FROM=\"a,b\":mailto:foo@example.com\r\n",
-    )
-    .unwrap();
+    let tokens =
+        lex(b"ATTENDEE;DELEGATED-FROM=\"a,b\":mailto:foo@example.com\r\n")
+            .unwrap();
     assert_tokens(
         tokens,
         vec![

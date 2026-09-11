@@ -1,7 +1,6 @@
-pub mod lexer;
+mod lexer;
 pub mod parser;
 mod token;
-mod validator;
 use parser::{ParseError, ParseResult};
 
 use crate::{
@@ -120,9 +119,7 @@ impl From<TimezoneBuilder> for Component {
 
 impl Component {
     /// Routes one already-parsed [`Property`] into the matching builder's
-    /// own fields. What's legal for a given component is decided entirely
-    /// by that component's own [`PropertyIngest`] impl — this is just the
-    /// dispatch from "which component" to "which builder".
+    /// own fields
     fn ingest(&mut self, p: Property) -> ParseResult<()> {
         match self {
             Self::Event(b) => b.ingest(p),
@@ -547,7 +544,8 @@ impl From<Iana> for Property {
 }
 
 /// Parses a property's raw, unparsed remainder (`*(";" param) ":" value`,
-/// exactly what a [`TokenType::Property`](super::ast::token::TokenType::Property)
+/// exactly what a
+/// [`TokenType::Property`](super::ast::token::TokenType::Property)
 /// token's `literal()` carries) into the matching [`Property`] variant.
 /// Backs [`Property::parse`]'s dispatch table.
 type PropertyParser = fn(&[u8]) -> ParseResult<Property>;
@@ -650,12 +648,10 @@ impl CalendarBuilder {
     }
 
     fn build(self) -> Result<Calendar, CalendarError> {
-        let prodid = self
-            .prodid
-            .ok_or(CalendarError::MissingField("PRODID"))?;
-        let version = self
-            .version
-            .ok_or(CalendarError::MissingField("VERSION"))?;
+        let prodid =
+            self.prodid.ok_or(CalendarError::MissingField("PRODID"))?;
+        let version =
+            self.version.ok_or(CalendarError::MissingField("VERSION"))?;
         if self.components.is_empty() {
             return Err(CalendarError::RequiresAtLeastOne(
                 "VCALENDAR",
@@ -685,7 +681,7 @@ impl CalendarBuilder {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub(crate) enum CalendarError {
+pub enum CalendarError {
     #[error("Missing field: {0}")]
     MissingField(&'static str),
 
@@ -824,29 +820,55 @@ impl EventBuilder {
 impl PropertyIngest for EventBuilder {
     fn ingest(&mut self, p: Property) -> ParseResult<()> {
         match p {
-            Property::DateTimeStamp(v) => set_once(&mut self.dtstamp, v, "DTSTAMP"),
+            Property::DateTimeStamp(v) => {
+                set_once(&mut self.dtstamp, v, "DTSTAMP")
+            }
             Property::Uid(v) => set_once(&mut self.uid, v, "UID"),
-            Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
-            Property::Classification(v) => set_once(&mut self.class, v, "CLASS"),
-            Property::DateTimeCreated(v) => set_once(&mut self.created, v, "CREATED"),
-            Property::Description(v) => set_once(&mut self.description, v, "DESCRIPTION"),
+            Property::DateTimeStart(v) => {
+                set_once(&mut self.dtstart, v, "DTSTART")
+            }
+            Property::Classification(v) => {
+                set_once(&mut self.class, v, "CLASS")
+            }
+            Property::DateTimeCreated(v) => {
+                set_once(&mut self.created, v, "CREATED")
+            }
+            Property::Description(v) => {
+                set_once(&mut self.description, v, "DESCRIPTION")
+            }
             Property::Geo(v) => set_once(&mut self.geo, v, "GEO"),
-            Property::LastModified(v) => set_once(&mut self.last_mod, v, "LAST-MODIFIED"),
-            Property::Location(v) => set_once(&mut self.location, v, "LOCATION"),
-            Property::Organizer(v) => set_once(&mut self.organizer, v, "ORGANIZER"),
-            Property::Priority(v) => set_once(&mut self.priority, v, "PRIORITY"),
+            Property::LastModified(v) => {
+                set_once(&mut self.last_mod, v, "LAST-MODIFIED")
+            }
+            Property::Location(v) => {
+                set_once(&mut self.location, v, "LOCATION")
+            }
+            Property::Organizer(v) => {
+                set_once(&mut self.organizer, v, "ORGANIZER")
+            }
+            Property::Priority(v) => {
+                set_once(&mut self.priority, v, "PRIORITY")
+            }
             Property::Sequence(v) => set_once(&mut self.seq, v, "SEQUENCE"),
             Property::Status(v) => set_once(&mut self.status, v, "STATUS"),
             Property::Summary(v) => set_once(&mut self.summary, v, "SUMMARY"),
-            Property::TimeTransparency(v) => set_once(&mut self.transp, v, "TRANSP"),
-            Property::UniformResourceLocator(v) => set_once(&mut self.url, v, "URL"),
-            Property::RecurrenceId(v) => set_once(&mut self.recurid, v, "RECURRENCE-ID"),
+            Property::TimeTransparency(v) => {
+                set_once(&mut self.transp, v, "TRANSP")
+            }
+            Property::UniformResourceLocator(v) => {
+                set_once(&mut self.url, v, "URL")
+            }
+            Property::RecurrenceId(v) => {
+                set_once(&mut self.recurid, v, "RECURRENCE-ID")
+            }
             Property::RRule(v) => set_once(&mut self.rrule, v, "RRULE"),
             // DTEND and DURATION are mutually exclusive within a VEVENT
             // (RFC 5545 §3.6.1) — that's a cross-field rule, checked in
             // `build()` once every property has been seen, not here.
             Property::DateTimeEnd(v) => set_once(&mut self.dtend, v, "DTEND"),
-            Property::Duration(v) => set_once(&mut self.duration, v, "DURATION"),
+            Property::Duration(v) => {
+                set_once(&mut self.duration, v, "DURATION")
+            }
             Property::Attachment(v) => Ok(self.attach.push(v)),
             Property::Attendee(v) => Ok(self.attendee.push(v)),
             Property::Categories(v) => Ok(self.categories.push(v)),
@@ -966,30 +988,58 @@ impl TodoBuilder {
 impl PropertyIngest for TodoBuilder {
     fn ingest(&mut self, p: Property) -> ParseResult<()> {
         match p {
-            Property::DateTimeStamp(v) => set_once(&mut self.dtstamp, v, "DTSTAMP"),
+            Property::DateTimeStamp(v) => {
+                set_once(&mut self.dtstamp, v, "DTSTAMP")
+            }
             Property::Uid(v) => set_once(&mut self.uid, v, "UID"),
-            Property::Classification(v) => set_once(&mut self.class, v, "CLASS"),
-            Property::Completed(v) => set_once(&mut self.completed, v, "COMPLETED"),
-            Property::DateTimeCreated(v) => set_once(&mut self.created, v, "CREATED"),
-            Property::Description(v) => set_once(&mut self.description, v, "DESCRIPTION"),
-            Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
+            Property::Classification(v) => {
+                set_once(&mut self.class, v, "CLASS")
+            }
+            Property::Completed(v) => {
+                set_once(&mut self.completed, v, "COMPLETED")
+            }
+            Property::DateTimeCreated(v) => {
+                set_once(&mut self.created, v, "CREATED")
+            }
+            Property::Description(v) => {
+                set_once(&mut self.description, v, "DESCRIPTION")
+            }
+            Property::DateTimeStart(v) => {
+                set_once(&mut self.dtstart, v, "DTSTART")
+            }
             Property::Geo(v) => set_once(&mut self.geo, v, "GEO"),
-            Property::LastModified(v) => set_once(&mut self.last_mod, v, "LAST-MODIFIED"),
-            Property::Location(v) => set_once(&mut self.location, v, "LOCATION"),
-            Property::Organizer(v) => set_once(&mut self.organizer, v, "ORGANIZER"),
-            Property::PercentComplete(v) => set_once(&mut self.percent, v, "PERCENT-COMPLETE"),
-            Property::Priority(v) => set_once(&mut self.priority, v, "PRIORITY"),
-            Property::RecurrenceId(v) => set_once(&mut self.recur_id, v, "RECURRENCE-ID"),
+            Property::LastModified(v) => {
+                set_once(&mut self.last_mod, v, "LAST-MODIFIED")
+            }
+            Property::Location(v) => {
+                set_once(&mut self.location, v, "LOCATION")
+            }
+            Property::Organizer(v) => {
+                set_once(&mut self.organizer, v, "ORGANIZER")
+            }
+            Property::PercentComplete(v) => {
+                set_once(&mut self.percent, v, "PERCENT-COMPLETE")
+            }
+            Property::Priority(v) => {
+                set_once(&mut self.priority, v, "PRIORITY")
+            }
+            Property::RecurrenceId(v) => {
+                set_once(&mut self.recur_id, v, "RECURRENCE-ID")
+            }
             Property::Sequence(v) => set_once(&mut self.seq, v, "SEQUENCE"),
             Property::Status(v) => set_once(&mut self.status, v, "STATUS"),
             Property::Summary(v) => set_once(&mut self.summary, v, "SUMMARY"),
-            Property::UniformResourceLocator(v) => set_once(&mut self.url, v, "URL"),
+            Property::UniformResourceLocator(v) => {
+                set_once(&mut self.url, v, "URL")
+            }
             Property::RRule(v) => set_once(&mut self.rrule, v, "RRULE"),
             // DUE and DURATION are mutually exclusive within a VTODO, and
             // DURATION requires DTSTART to also be present (RFC 5545
             // §3.6.2) — cross-field rules, checked in `build()`.
             Property::DateTimeDue(v) => set_once(&mut self.due, v, "DUE"),
-            Property::Duration(v) => set_once(&mut self.duration, v, "DURATION"),
+            Property::Duration(v) => {
+                set_once(&mut self.duration, v, "DURATION")
+            }
             Property::Attachment(v) => Ok(self.attach.push(v)),
             Property::Attendee(v) => Ok(self.attendee.push(v)),
             Property::Categories(v) => Ok(self.categories.push(v)),
@@ -1045,12 +1095,10 @@ impl AlarmBuilder {
     /// applies — everything beyond "`ACTION` and `TRIGGER` are both
     /// required" is specific to that alternative.
     fn build(self) -> Result<Alarm, CalendarError> {
-        let action = self
-            .action
-            .ok_or(CalendarError::MissingField("ACTION"))?;
-        let trigger = self
-            .trigger
-            .ok_or(CalendarError::MissingField("TRIGGER"))?;
+        let action =
+            self.action.ok_or(CalendarError::MissingField("ACTION"))?;
+        let trigger =
+            self.trigger.ok_or(CalendarError::MissingField("TRIGGER"))?;
         if self.duration.is_some() != self.repeat.is_some() {
             return Err(CalendarError::RequiresTogether("DURATION", "REPEAT"));
         }
@@ -1144,9 +1192,13 @@ impl PropertyIngest for AlarmBuilder {
         match p {
             Property::Action(v) => set_once(&mut self.action, v, "ACTION"),
             Property::Trigger(v) => set_once(&mut self.trigger, v, "TRIGGER"),
-            Property::Duration(v) => set_once(&mut self.duration, v, "DURATION"),
+            Property::Duration(v) => {
+                set_once(&mut self.duration, v, "DURATION")
+            }
             Property::Repeat(v) => set_once(&mut self.repeat, v, "REPEAT"),
-            Property::Description(v) => set_once(&mut self.description, v, "DESCRIPTION"),
+            Property::Description(v) => {
+                set_once(&mut self.description, v, "DESCRIPTION")
+            }
             Property::Summary(v) => set_once(&mut self.summary, v, "SUMMARY"),
             Property::Attendee(v) => Ok(self.attendee.push(v)),
             Property::Attachment(v) => Ok(self.attach.push(v)),
@@ -1188,13 +1240,21 @@ impl FreeBusyBuilder {
 impl PropertyIngest for FreeBusyBuilder {
     fn ingest(&mut self, p: Property) -> ParseResult<()> {
         match p {
-            Property::DateTimeStamp(v) => set_once(&mut self.dtstamp, v, "DTSTAMP"),
+            Property::DateTimeStamp(v) => {
+                set_once(&mut self.dtstamp, v, "DTSTAMP")
+            }
             Property::Uid(v) => set_once(&mut self.uid, v, "UID"),
             Property::Contact(v) => set_once(&mut self.contact, v, "CONTACT"),
-            Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
+            Property::DateTimeStart(v) => {
+                set_once(&mut self.dtstart, v, "DTSTART")
+            }
             Property::DateTimeEnd(v) => set_once(&mut self.dtend, v, "DTEND"),
-            Property::Organizer(v) => set_once(&mut self.organizer, v, "ORGANIZER"),
-            Property::UniformResourceLocator(v) => set_once(&mut self.url, v, "URL"),
+            Property::Organizer(v) => {
+                set_once(&mut self.organizer, v, "ORGANIZER")
+            }
+            Property::UniformResourceLocator(v) => {
+                set_once(&mut self.url, v, "URL")
+            }
             Property::Attendee(v) => Ok(self.attendee.push(v)),
             Property::Comment(v) => Ok(self.comment.push(v)),
             Property::FreeBusyTime(v) => Ok(self.freebusy.push(v)),
@@ -1248,18 +1308,34 @@ impl JournalBuilder {
 impl PropertyIngest for JournalBuilder {
     fn ingest(&mut self, p: Property) -> ParseResult<()> {
         match p {
-            Property::DateTimeStamp(v) => set_once(&mut self.dtstamp, v, "DTSTAMP"),
+            Property::DateTimeStamp(v) => {
+                set_once(&mut self.dtstamp, v, "DTSTAMP")
+            }
             Property::Uid(v) => set_once(&mut self.uid, v, "UID"),
-            Property::Classification(v) => set_once(&mut self.class, v, "CLASS"),
-            Property::DateTimeCreated(v) => set_once(&mut self.created, v, "CREATED"),
-            Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
-            Property::LastModified(v) => set_once(&mut self.last_mod, v, "LAST-MODIFIED"),
-            Property::Organizer(v) => set_once(&mut self.organizer, v, "ORGANIZER"),
-            Property::RecurrenceId(v) => set_once(&mut self.recurid, v, "RECURRENCE-ID"),
+            Property::Classification(v) => {
+                set_once(&mut self.class, v, "CLASS")
+            }
+            Property::DateTimeCreated(v) => {
+                set_once(&mut self.created, v, "CREATED")
+            }
+            Property::DateTimeStart(v) => {
+                set_once(&mut self.dtstart, v, "DTSTART")
+            }
+            Property::LastModified(v) => {
+                set_once(&mut self.last_mod, v, "LAST-MODIFIED")
+            }
+            Property::Organizer(v) => {
+                set_once(&mut self.organizer, v, "ORGANIZER")
+            }
+            Property::RecurrenceId(v) => {
+                set_once(&mut self.recurid, v, "RECURRENCE-ID")
+            }
             Property::Sequence(v) => set_once(&mut self.seq, v, "SEQUENCE"),
             Property::Status(v) => set_once(&mut self.status, v, "STATUS"),
             Property::Summary(v) => set_once(&mut self.summary, v, "SUMMARY"),
-            Property::UniformResourceLocator(v) => set_once(&mut self.url, v, "URL"),
+            Property::UniformResourceLocator(v) => {
+                set_once(&mut self.url, v, "URL")
+            }
             Property::RRule(v) => set_once(&mut self.rrule, v, "RRULE"),
             Property::Attachment(v) => Ok(self.attach.push(v)),
             Property::Attendee(v) => Ok(self.attendee.push(v)),
@@ -1382,8 +1458,12 @@ impl TimezoneBuilder {
 impl PropertyIngest for TimezoneBuilder {
     fn ingest(&mut self, p: Property) -> ParseResult<()> {
         match p {
-            Property::TimeZoneIdentifier(v) => set_once(&mut self.tzid, v, "TZID"),
-            Property::LastModified(v) => set_once(&mut self.last_mod, v, "LAST-MODIFIED"),
+            Property::TimeZoneIdentifier(v) => {
+                set_once(&mut self.tzid, v, "TZID")
+            }
+            Property::LastModified(v) => {
+                set_once(&mut self.last_mod, v, "LAST-MODIFIED")
+            }
             Property::TimeZoneUrl(v) => set_once(&mut self.tzurl, v, "TZURL"),
             Property::Xprop(v) => Ok(self.xprop.push(v)),
             Property::Iana(v) => Ok(self.iana.push(v)),
@@ -1450,7 +1530,9 @@ impl TzPropBuilder {
 impl PropertyIngest for TzPropBuilder {
     fn ingest(&mut self, p: Property) -> ParseResult<()> {
         match p {
-            Property::DateTimeStart(v) => set_once(&mut self.dtstart, v, "DTSTART"),
+            Property::DateTimeStart(v) => {
+                set_once(&mut self.dtstart, v, "DTSTART")
+            }
             Property::TimeZoneOffsetTo(v) => {
                 set_once(&mut self.tz_offset_to, v, "TZOFFSETTO")
             }
@@ -1641,7 +1723,10 @@ mod build_tests {
         with_summary.ingest(prop(b"SUMMARY", b":Reminder")).unwrap();
         assert!(matches!(
             with_summary.build(),
-            Err(CalendarError::RequiresAtLeastOne("ACTION EMAIL", "ATTENDEE"))
+            Err(CalendarError::RequiresAtLeastOne(
+                "ACTION EMAIL",
+                "ATTENDEE"
+            ))
         ));
 
         let mut complete = minimal_alarm(b":EMAIL");

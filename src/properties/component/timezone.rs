@@ -47,6 +47,7 @@ struct TZNameParams {
 
 impl TryFrom<&[u8]> for TZNameParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {

@@ -90,15 +90,20 @@ impl<'a> Lexer<'a> {
 
         let comp_start = self.current;
         self.name_chars();
-        let comp_name = Self::fold_upper(&self.source[comp_start..self.current]);
+        let comp_name =
+            Self::fold_upper(&self.source[comp_start..self.current]);
 
         let lex: &[u8] = if matches!(tt, TokenType::Begin) {
             b"BEGIN"
         } else {
             b"END"
         };
-        self.tokens
-            .push(Token::new(tt, lex, Some(comp_name.as_ref()), self.line));
+        self.tokens.push(Token::new(
+            tt,
+            lex,
+            Some(comp_name.as_ref()),
+            self.line,
+        ));
         Ok(())
     }
 
@@ -113,8 +118,12 @@ impl<'a> Lexer<'a> {
         self.current += memchr::memchr(b'\r', rest).unwrap_or(rest.len());
         let remainder = &self.source[rest_start..self.current];
 
-        self.tokens
-            .push(Token::new(TokenType::Property, name, Some(remainder), self.line));
+        self.tokens.push(Token::new(
+            TokenType::Property,
+            name,
+            Some(remainder),
+            self.line,
+        ));
     }
 
     /// advances past a run of name characters (`ALPHA` / `DIGIT` / `-`),

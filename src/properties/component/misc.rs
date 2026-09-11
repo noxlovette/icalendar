@@ -28,6 +28,7 @@ struct RequestStatusParams {
 
 impl TryFrom<&[u8]> for RequestStatusParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
@@ -52,8 +53,7 @@ mod tests {
         // Regression test: REQUEST-STATUS's own value format is
         // "statcode;statdesc[;extdata]" — a naive first-';' split would
         // truncate it at "2.0".
-        let rs =
-            RequestStatus::try_from(b":2.0;Success".as_slice()).unwrap();
+        let rs = RequestStatus::try_from(b":2.0;Success".as_slice()).unwrap();
         assert_eq!(&*rs.value, "2.0;Success");
     }
 }

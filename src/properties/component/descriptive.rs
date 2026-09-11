@@ -2,7 +2,9 @@ use crate::{
     Pair,
     ast::{parser::ParseError, split_once},
     params::{Encoding, Fmttype, Language, ValueDataType},
-    properties::{AltrepLanguageParams, SharedParams, param_name, param_segments},
+    properties::{
+        AltrepLanguageParams, SharedParams, param_name, param_segments,
+    },
     values::{Binary, Float, Integer, Text, Uri},
 };
 
@@ -39,6 +41,7 @@ enum AttachmentValue {
 
 impl TryFrom<&[u8]> for AttachmentValue {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         // RFC 5545 selects between these via the ENCODING/VALUE params,
         // which aren't available at this parsing stage (the value is
@@ -63,19 +66,22 @@ struct AttachmentParams {
 
 impl TryFrom<&[u8]> for AttachmentParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"ENCODING" => {
-                    params.encoding = Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.encoding =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
                 }
                 b"VALUE" => {
                     params.value_data_type =
                         Some(split_once(segment, b'=')?.1.try_into()?)
                 }
                 b"FMTTYPE" => {
-                    params.fmttype = Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.fmttype =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
                 }
                 _ => params.shared.absorb(segment)?,
             }
@@ -111,6 +117,7 @@ struct CategoriesParams {
 
 impl TryFrom<&[u8]> for CategoriesParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
@@ -171,6 +178,7 @@ enum ClassificationEnum {
 
 impl TryFrom<&[u8]> for ClassificationEnum {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let r = match v {
             b"PUBLIC" => Self::Public,
@@ -290,7 +298,16 @@ pub struct PercentComplete {
     params: SharedParams,
 }
 
-impl_try_from_bytes!(PercentComplete, Integer);
+impl_try_from_bytes!(PercentComplete, Integer, SharedParams, |v: &Integer| {
+    if (0..=100).contains(&**v) {
+        Ok(())
+    } else {
+        Err(crate::ast::parser::ParseError::Parameter {
+            expected: "PERCENT-COMPLETE value in 0..=100".into(),
+            received: Some((**v).to_string()),
+        })
+    }
+});
 
 /// This priority is specified as an integer in the range 0 to 9.  A value
 /// of 0 specifies an undefined priority.  A value of 1 is the highest
@@ -318,7 +335,16 @@ pub struct Priority {
     params: SharedParams,
 }
 
-impl_try_from_bytes!(Priority, Integer);
+impl_try_from_bytes!(Priority, Integer, SharedParams, |v: &Integer| {
+    if (0..=9).contains(&**v) {
+        Ok(())
+    } else {
+        Err(crate::ast::parser::ParseError::Parameter {
+            expected: "PRIORITY value in 0..=9".into(),
+            received: Some((**v).to_string()),
+        })
+    }
+});
 
 /// The property value is an arbitrary text.  More than one resource can be
 /// specified as a COMMA-separated list of resources.
@@ -390,6 +416,7 @@ enum StatusValue {
 
 impl TryFrom<&[u8]> for StatusValue {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         match v {
             b"TENTATIVE" => Ok(Self::Tentative),
@@ -498,7 +525,10 @@ mod tests {
             ("FINAL", "Final"),
         ] {
             let parsed = StatusValue::try_from(tok.as_bytes());
-            assert!(parsed.is_ok(), "{tok} ({matches_variant}) failed to parse");
+            assert!(
+                parsed.is_ok(),
+                "{tok} ({matches_variant}) failed to parse"
+            );
         }
     }
 
@@ -521,9 +551,8 @@ mod tests {
 
     #[test]
     fn geo_property_with_params() {
-        let geo =
-            Geo::try_from(b";X-FOO=bar:37.386013;-122.082932".as_slice())
-                .unwrap();
+        let geo = Geo::try_from(b";X-FOO=bar:37.386013;-122.082932".as_slice())
+            .unwrap();
         assert_eq!(geo.params.xname.len(), 1);
     }
 }

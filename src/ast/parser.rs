@@ -2,10 +2,10 @@ use super::token::Token;
 use crate::{
     Calendar,
     ast::{
-        AlarmBuilder, CalendarBuilder, CalendarError, Component,
-        EventBuilder, FreeBusyBuilder, JournalBuilder, Property,
-        PropertyIngest, TimezoneBuilder, TodoBuilder, TzObservanceKind,
-        TzPropBuilder, token::TokenType,
+        AlarmBuilder, CalendarBuilder, CalendarError, Component, EventBuilder,
+        FreeBusyBuilder, JournalBuilder, Property, PropertyIngest,
+        TimezoneBuilder, TodoBuilder, TzObservanceKind, TzPropBuilder,
+        token::TokenType,
     },
 };
 use TokenType::*;
@@ -37,8 +37,22 @@ impl Parser {
         }
     }
 
-    /// main entry point
+    /// main entry point. Parses one `BEGIN:VCALENDAR ... END:VCALENDAR`
+    /// iCalendar object (RFC 5545 §3.4/§3.6) and builds it, running every
+    /// cross-field validation deferred to `build()` (see `crate::ast`'s
+    /// module docs). A stream containing more than one `icalobject` can be
+    /// parsed by calling this repeatedly — it consumes exactly one
+    /// `VCALENDAR` and leaves the parser positioned right after it.
     pub fn calendar(&mut self) -> ParseResult<Calendar> {
+        if self
+            .consume(Begin, "expected calendar to start with BEGIN")?
+            .literal()
+            != b"VCALENDAR"
+        {
+            return Err(ParseError::UnknownComponent);
+        }
+        self.consume(Crlf, "expected crlf after BEGIN")?;
+
         let mut cal = CalendarBuilder::new();
 
         // Calendar properties (§3.7) precede any component.
@@ -63,7 +77,16 @@ impl Parser {
             cal.components.push(self.component()?);
         }
 
-        todo!("consume the outer END:VCALENDAR and finish cal.build()")
+        if self
+            .consume(End, "expected calendar to end with END")?
+            .literal()
+            != b"VCALENDAR"
+        {
+            return Err(ParseError::MismatchedEnd);
+        }
+        self.consume(Crlf, "expected crlf after END")?;
+
+        Ok(cal.build()?)
     }
 
     /// parses one `BEGIN:<name> ... END:<name>` component, routing its
@@ -104,8 +127,7 @@ impl Parser {
             } else {
                 let prop =
                     self.consume(Property, "expected a property line")?;
-                let property =
-                    Property::parse(prop.lexeme(), prop.literal())?;
+                let property = Property::parse(prop.lexeme(), prop.literal())?;
                 self.consume(Crlf, "expected crlf after property")?;
                 component.ingest(property)?;
             }
@@ -128,8 +150,8 @@ impl Parser {
     /// further, so there's no need to watch for another `BEGIN` inside this
     /// loop the way [`Self::component`] does.
     fn alarm(&mut self) -> ParseResult<AlarmBuilder> {
-        let begin = self
-            .consume(Begin, "expected sub-component to start with BEGIN")?;
+        let begin =
+            self.consume(Begin, "expected sub-component to start with BEGIN")?;
         if begin.literal() != b"VALARM" {
             return Err(ParseError::UnknownComponent);
         }
@@ -161,8 +183,8 @@ impl Parser {
     fn tz_observance(
         &mut self,
     ) -> ParseResult<(TzObservanceKind, TzPropBuilder)> {
-        let begin = self
-            .consume(Begin, "expected sub-component to start with BEGIN")?;
+        let begin =
+            self.consume(Begin, "expected sub-component to start with BEGIN")?;
         let kind = match begin.literal() {
             b"STANDARD" => TzObservanceKind::Standard,
             b"DAYLIGHT" => TzObservanceKind::Daylight,
@@ -202,7 +224,8 @@ impl Parser {
         Ok(false)
     }
 
-    /// returns true if the next token corresponds to the one passed to the function. false if we have reached the end of the vector
+    /// returns true if the next token corresponds to the one passed to the
+    /// function. false if we have reached the end of the vector
     fn check(&mut self, t: TokenType) -> ParseResult<bool> {
         Ok(self.peek()?.token_type() == t)
     }
@@ -295,7 +318,7 @@ pub enum ParseError {
     MismatchedEnd,
 
     /// URL parsing error
-    #[error("Incorrect URL: {0}")]
+    #[error(transparent)]
     URL(#[from] url::ParseError),
 
     /// Quoted String Error
@@ -303,7 +326,7 @@ pub enum ParseError {
     QuotedString,
 
     /// Encoding error
-    #[error("UTF-8 Error")]
+    #[error(transparent)]
     UTF(#[from] Utf8Error),
 
     /// [CalendarUserAddress] Parsing Error
@@ -346,11 +369,11 @@ pub enum ParseError {
     ChronoParse(#[from] chrono::ParseError),
 
     /// \[[Integer](crate::values::Integer)\] parsing error
-    #[error("Malformed Integer")]
+    #[error(transparent)]
     Integer(#[from] std::num::ParseIntError),
 
     /// \[[Float](crate::values::Float)\] parsing error
-    #[error("Malformed Float")]
+    #[error(transparent)]
     Float(#[from] std::num::ParseFloatError),
 
     /// \[[UtcOffset](crate::values::UtcOffset)\] parsing error
@@ -362,6 +385,52 @@ pub enum ParseError {
     Duration,
 
     /// \[[Binary](crate::values::Binary)\] decoding error
-    #[error("Malformed BASE64 data")]
+    #[error(transparent)]
     Base64(#[from] base64::DecodeError),
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::lexer::Lexer;
+
+    fn parse(src: &[u8]) -> ParseResult<Calendar> {
+        let tokens = Lexer::new(src).scan().unwrap();
+        Parser::new(tokens).calendar()
+    }
+
+    const MINIMAL_EVENT: &[u8] = b"BEGIN:VCALENDAR\r\nPRODID:-//example//EN\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:123@example.com\r\nDTSTAMP:19970901T130000Z\r\nDTSTART:19970903T163000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+    #[test]
+    fn parses_a_minimal_calendar_with_one_event() {
+        let cal = parse(MINIMAL_EVENT).unwrap();
+        assert_eq!(cal.components.len(), 1);
+    }
+
+    #[test]
+    fn rejects_mismatched_begin_end() {
+        let src = b"BEGIN:VCALENDAR\r\nPRODID:-//example//EN\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:123@example.com\r\nDTSTAMP:19970901T130000Z\r\nDTSTART:19970903T163000Z\r\nEND:VEVENT\r\nEND:VJOURNAL\r\n";
+        assert!(matches!(parse(src), Err(ParseError::MismatchedEnd)));
+    }
+
+    #[test]
+    fn rejects_a_begin_that_is_not_vcalendar() {
+        let src = b"BEGIN:VEVENT\r\nEND:VEVENT\r\n";
+        assert!(matches!(parse(src), Err(ParseError::UnknownComponent)));
+    }
+
+    #[test]
+    fn requires_at_least_one_component() {
+        let src = b"BEGIN:VCALENDAR\r\nPRODID:-//example//EN\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n";
+        assert!(parse(src).is_err());
+    }
+
+    #[test]
+    fn parses_two_sequential_calendar_objects_from_one_stream() {
+        let mut src = MINIMAL_EVENT.to_vec();
+        src.extend_from_slice(MINIMAL_EVENT);
+        let tokens = Lexer::new(&src).scan().unwrap();
+        let mut parser = Parser::new(tokens);
+        assert!(parser.calendar().is_ok());
+        assert!(parser.calendar().is_ok());
+    }
 }

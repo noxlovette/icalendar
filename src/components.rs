@@ -1,4 +1,4 @@
-pub(crate) mod alarm;
+pub mod alarm;
 pub mod event;
 pub mod free_busy;
 pub mod journal;

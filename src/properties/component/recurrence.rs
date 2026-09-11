@@ -63,12 +63,14 @@ struct ExDateParams {
 
 impl TryFrom<&[u8]> for ExDateParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"VALUE" => {
-                    params.data_type = Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.data_type =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
                 }
                 b"TZID" => {
                     params.tzid = Some(split_once(segment, b'=')?.1.try_into()?)
@@ -132,12 +134,14 @@ struct RDateParams {
 
 impl TryFrom<&[u8]> for RDateParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"VALUE" => {
-                    params.data_type = Some(split_once(segment, b'=')?.1.try_into()?)
+                    params.data_type =
+                        Some(split_once(segment, b'=')?.1.try_into()?)
                 }
                 b"TZID" => {
                     params.tzid = Some(split_once(segment, b'=')?.1.try_into()?)

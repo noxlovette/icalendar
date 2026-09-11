@@ -25,6 +25,7 @@ pub enum DateOrDatetime {
 
 impl TryFrom<&[u8]> for DateOrDatetime {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         // DATE is 8 digits (YYYYMMDD); DATE-TIME always contains the "T"
         // time designator. The two are unambiguous by shape alone.
@@ -50,6 +51,7 @@ pub enum DateTimePeriod {
 
 impl TryFrom<&[u8]> for DateTimePeriod {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         // PERIOD always contains a "/" separator; DATE-TIME contains "T";
         // DATE is bare digits. Unambiguous by shape alone.
@@ -75,6 +77,7 @@ pub enum DateTimeDuration {
 
 impl TryFrom<&[u8]> for DateTimeDuration {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         if is_duration_shaped(v) {
             Ok(Self::Duration(v.try_into()?))
@@ -120,6 +123,7 @@ pub struct Duration(ChronoDuration);
 
 impl Deref for Duration {
     type Target = ChronoDuration;
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -127,6 +131,7 @@ impl Deref for Duration {
 
 impl TryFrom<&[u8]> for Duration {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let str = from_utf8(v)?;
         let (negative, str) = match str.strip_prefix('-') {
@@ -301,6 +306,7 @@ pub struct DateTime(ChronoDateTime<Utc>);
 
 impl Deref for DateTime {
     type Target = ChronoDateTime<Utc>;
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -308,6 +314,7 @@ impl Deref for DateTime {
 
 impl TryFrom<&[u8]> for DateTime {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let str = from_utf8(v)?;
         if let Some(stripped) = str.strip_suffix('Z') {
@@ -344,6 +351,7 @@ pub struct Date(NaiveDate);
 
 impl Deref for Date {
     type Target = NaiveDate;
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -351,6 +359,7 @@ impl Deref for Date {
 
 impl TryFrom<&[u8]> for Date {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let str = from_utf8(v)?;
         Ok(Self(NaiveDate::parse_from_str(str, ICAL_DATE_FMT)?))
@@ -378,6 +387,7 @@ pub struct UtcOffset(FixedOffset);
 
 impl Deref for UtcOffset {
     type Target = FixedOffset;
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -385,6 +395,7 @@ impl Deref for UtcOffset {
 
 impl TryFrom<&[u8]> for UtcOffset {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let str = from_utf8(v)?;
         let (sign, rest) = match str.as_bytes().first() {
@@ -398,8 +409,10 @@ impl TryFrom<&[u8]> for UtcOffset {
         if !rest.bytes().all(|b| b.is_ascii_digit()) {
             return Err(ParseError::UtcOffset);
         }
-        let hour: i32 = rest[0..2].parse().map_err(|_| ParseError::UtcOffset)?;
-        let minute: i32 = rest[2..4].parse().map_err(|_| ParseError::UtcOffset)?;
+        let hour: i32 =
+            rest[0..2].parse().map_err(|_| ParseError::UtcOffset)?;
+        let minute: i32 =
+            rest[2..4].parse().map_err(|_| ParseError::UtcOffset)?;
         let second: i32 = if rest.len() == 6 {
             rest[4..6].parse().map_err(|_| ParseError::UtcOffset)?
         } else {
@@ -451,6 +464,7 @@ pub enum Period {
 
 impl TryFrom<&[u8]> for Period {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let (start_b, rest) = split_once(v, b'/')?;
         let start = DateTime::try_from(start_b)?;
@@ -597,6 +611,7 @@ pub struct Binary(Vec<u8>);
 
 impl Deref for Binary {
     type Target = [u8];
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -604,6 +619,7 @@ impl Deref for Binary {
 
 impl TryFrom<&[u8]> for Binary {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(base64::engine::general_purpose::STANDARD.decode(v)?))
     }
@@ -689,6 +705,7 @@ pub struct Integer(i32);
 
 impl Deref for Integer {
     type Target = i32;
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -696,6 +713,7 @@ impl Deref for Integer {
 
 impl TryFrom<&[u8]> for Integer {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(from_utf8(v)?.parse()?))
     }
@@ -710,6 +728,7 @@ pub struct Float(f64);
 
 impl Deref for Float {
     type Target = f64;
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -717,6 +736,7 @@ impl Deref for Float {
 
 impl TryFrom<&[u8]> for Float {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(from_utf8(v)?.parse()?))
     }
@@ -985,6 +1005,7 @@ mod recurrence {
 
     impl TryFrom<&[u8]> for Frequency {
         type Error = ParseError;
+
         fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
             let r = match v {
                 b"SECONDLY" => Self::Secondly,
@@ -1007,6 +1028,7 @@ mod recurrence {
 
     impl TryFrom<&str> for Weekday {
         type Error = ParseError;
+
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             let r = match s {
                 "SU" => Self::Su,
@@ -1065,47 +1087,75 @@ mod recurrence {
 
     impl TryFrom<&str> for Seconds {
         type Error = ParseError;
+
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYSECOND", s, 0, 60, Self)
         }
     }
     impl TryFrom<&str> for Minutes {
         type Error = ParseError;
+
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYMINUTE", s, 0, 59, Self)
         }
     }
     impl TryFrom<&str> for Hour {
         type Error = ParseError;
+
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYHOUR", s, 0, 23, Self)
         }
     }
     impl TryFrom<&str> for WeekNum {
         type Error = ParseError;
+
         fn try_from(s: &str) -> Result<Self, Self::Error> {
-            parse_bounded("BYWEEKNO", s, -53, 53, Self)
-                .and_then(|WeekNum(n)| if n == 0 { Err(recur_err("BYWEEKNO", s)) } else { Ok(WeekNum(n)) })
+            parse_bounded("BYWEEKNO", s, -53, 53, Self).and_then(
+                |WeekNum(n)| {
+                    if n == 0 {
+                        Err(recur_err("BYWEEKNO", s))
+                    } else {
+                        Ok(WeekNum(n))
+                    }
+                },
+            )
         }
     }
     impl TryFrom<&str> for MonthNum {
         type Error = ParseError;
+
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             parse_bounded("BYMONTH", s, 1, 12, Self)
         }
     }
     impl TryFrom<&str> for MonthDayNum {
         type Error = ParseError;
+
         fn try_from(s: &str) -> Result<Self, Self::Error> {
-            parse_bounded("BYMONTHDAY", s, -31, 31, Self)
-                .and_then(|MonthDayNum(n)| if n == 0 { Err(recur_err("BYMONTHDAY", s)) } else { Ok(MonthDayNum(n)) })
+            parse_bounded("BYMONTHDAY", s, -31, 31, Self).and_then(
+                |MonthDayNum(n)| {
+                    if n == 0 {
+                        Err(recur_err("BYMONTHDAY", s))
+                    } else {
+                        Ok(MonthDayNum(n))
+                    }
+                },
+            )
         }
     }
     impl TryFrom<&str> for YearDayNum {
         type Error = ParseError;
+
         fn try_from(s: &str) -> Result<Self, Self::Error> {
-            parse_bounded("BYYEARDAY", s, -366, 366, Self)
-                .and_then(|YearDayNum(n)| if n == 0 { Err(recur_err("BYYEARDAY", s)) } else { Ok(YearDayNum(n)) })
+            parse_bounded("BYYEARDAY", s, -366, 366, Self).and_then(
+                |YearDayNum(n)| {
+                    if n == 0 {
+                        Err(recur_err("BYYEARDAY", s))
+                    } else {
+                        Ok(YearDayNum(n))
+                    }
+                },
+            )
         }
     }
 
@@ -1119,6 +1169,7 @@ mod recurrence {
 
     impl TryFrom<&[u8]> for Recur {
         type Error = ParseError;
+
         fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
             let s = from_utf8(v)?;
             let mut recur = Self::default();
@@ -1149,13 +1200,16 @@ mod recurrence {
                         recur.interval = Some(interval);
                     }
                     "BYSECOND" => {
-                        recur.by_second = parse_list(value, |s| Seconds::try_from(s))?;
+                        recur.by_second =
+                            parse_list(value, |s| Seconds::try_from(s))?;
                     }
                     "BYMINUTE" => {
-                        recur.by_minute = parse_list(value, |s| Minutes::try_from(s))?;
+                        recur.by_minute =
+                            parse_list(value, |s| Minutes::try_from(s))?;
                     }
                     "BYHOUR" => {
-                        recur.by_hour = parse_list(value, |s| Hour::try_from(s))?;
+                        recur.by_hour =
+                            parse_list(value, |s| Hour::try_from(s))?;
                     }
                     "BYDAY" => {
                         recur.by_day = parse_list(value, parse_weekday_num)?;
@@ -1169,10 +1223,12 @@ mod recurrence {
                             parse_list(value, |s| YearDayNum::try_from(s))?;
                     }
                     "BYWEEKNO" => {
-                        recur.by_week_no = parse_list(value, |s| WeekNum::try_from(s))?;
+                        recur.by_week_no =
+                            parse_list(value, |s| WeekNum::try_from(s))?;
                     }
                     "BYMONTH" => {
-                        recur.by_month = parse_list(value, |s| MonthNum::try_from(s))?;
+                        recur.by_month =
+                            parse_list(value, |s| MonthNum::try_from(s))?;
                     }
                     "BYSETPOS" => {
                         recur.by_set_pos =
@@ -1428,8 +1484,10 @@ mod tests {
     #[test]
     fn recur_rejects_until_and_count_together() {
         assert!(
-            Recur::try_from(b"FREQ=DAILY;COUNT=5;UNTIL=19971224T000000Z".as_slice())
-                .is_err()
+            Recur::try_from(
+                b"FREQ=DAILY;COUNT=5;UNTIL=19971224T000000Z".as_slice()
+            )
+            .is_err()
         );
     }
 
@@ -1440,13 +1498,13 @@ mod tests {
 
     #[test]
     fn recur_parses_byday_with_ordinal() {
-        assert!(
-            Recur::try_from(b"FREQ=MONTHLY;BYDAY=-1MO".as_slice()).is_ok()
-        );
+        assert!(Recur::try_from(b"FREQ=MONTHLY;BYDAY=-1MO".as_slice()).is_ok());
     }
 
     #[test]
     fn recur_rejects_out_of_range_bysecond() {
-        assert!(Recur::try_from(b"FREQ=SECONDLY;BYSECOND=61".as_slice()).is_err());
+        assert!(
+            Recur::try_from(b"FREQ=SECONDLY;BYSECOND=61".as_slice()).is_err()
+        );
     }
 }

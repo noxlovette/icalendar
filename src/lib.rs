@@ -103,9 +103,8 @@ mod tests {
 
     #[test]
     fn pair_parses_geo_example() {
-        let pair =
-            Pair::<Float>::try_from(b"37.386013;-122.082932".as_slice())
-                .unwrap();
+        let pair = Pair::<Float>::try_from(b"37.386013;-122.082932".as_slice())
+            .unwrap();
         assert_eq!(*pair.0, 37.386013);
         assert_eq!(*pair.1, -122.082932);
     }

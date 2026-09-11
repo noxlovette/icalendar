@@ -28,10 +28,26 @@ macro_rules! impl_try_from_bytes {
     ($ty:ident, $value_ty:ty, $param_ty:ty) => {
         impl TryFrom<&[u8]> for $ty {
             type Error = crate::ast::parser::ParseError;
+
             fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
                 let colon = crate::properties::value_start(v)?;
                 let params = <$param_ty>::try_from(&v[..colon])?;
                 let value = <$value_ty>::try_from(&v[colon + 1..])?;
+                Ok(Self { value, params })
+            }
+        }
+    };
+    ($ty:ident, $value_ty:ty, $param_ty:ty, $validate:expr) => {
+        impl TryFrom<&[u8]> for $ty {
+            type Error = crate::ast::parser::ParseError;
+
+            fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+                let colon = crate::properties::value_start(v)?;
+                let params = <$param_ty>::try_from(&v[..colon])?;
+                let value = <$value_ty>::try_from(&v[colon + 1..])?;
+                let validate: fn(&$value_ty) -> Result<(), Self::Error> =
+                    $validate;
+                validate(&value)?;
                 Ok(Self { value, params })
             }
         }
@@ -45,6 +61,7 @@ macro_rules! impl_try_from_bytes_list {
     ($ty:ident, $elem_ty:ty, $param_ty:ty) => {
         impl TryFrom<&[u8]> for $ty {
             type Error = crate::ast::parser::ParseError;
+
             fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
                 let colon = crate::properties::value_start(v)?;
                 let params = <$param_ty>::try_from(&v[..colon])?;
@@ -65,6 +82,7 @@ mod component;
 pub use calendar::*;
 pub use component::*;
 use std::fmt::Debug;
+use thiserror::Error;
 
 #[derive(Debug)]
 /// X Property
@@ -153,6 +171,7 @@ impl SharedParams {
 
 impl TryFrom<&[u8]> for SharedParams {
     type Error = ParseError;
+
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(value) {
@@ -186,6 +205,7 @@ struct AltrepLanguageParams {
 
 impl TryFrom<&[u8]> for AltrepLanguageParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
@@ -203,6 +223,12 @@ impl TryFrom<&[u8]> for AltrepLanguageParams {
         }
         Ok(params)
     }
+}
+
+#[derive(Debug, Error)]
+pub enum PropertyError {
+    #[error("invalid value for PRIORITY")]
+    InvalidPriority,
 }
 
 #[cfg(test)]

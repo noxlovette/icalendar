@@ -6,7 +6,9 @@ use crate::{
         RecurrenceIdentifierRange, RelationshipType, Rsvp, SentBy,
         TimeZoneIdentifier, ValueDataType,
     },
-    properties::{AltrepLanguageParams, SharedParams, param_name, param_segments},
+    properties::{
+        AltrepLanguageParams, SharedParams, param_name, param_segments,
+    },
     values::{CalendarUserAddress, DateOrDatetime, Text, Uri},
 };
 
@@ -44,18 +46,25 @@ struct AttendeeParams {
 
 impl TryFrom<&[u8]> for AttendeeParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
             let value = || split_once(segment, b'=').map(|(_, v)| v);
             match param_name(segment)?.to_ascii_uppercase().as_slice() {
                 b"LANGUAGE" => params.language = Some(value()?.try_into()?),
-                b"CUTYPE" => params.calendar_user_type = Some(value()?.try_into()?),
+                b"CUTYPE" => {
+                    params.calendar_user_type = Some(value()?.try_into()?)
+                }
                 b"MEMBER" => params.member = Some(value()?.try_into()?),
                 b"PARTSTAT" => params.status = Some(value()?.try_into()?),
                 b"RSVP" => params.rsvp = Some(value()?.try_into()?),
-                b"DELEGATED-TO" => params.deletegatee = Some(value()?.try_into()?),
-                b"DELEGATED-FROM" => params.delegator = Some(value()?.try_into()?),
+                b"DELEGATED-TO" => {
+                    params.deletegatee = Some(value()?.try_into()?)
+                }
+                b"DELEGATED-FROM" => {
+                    params.delegator = Some(value()?.try_into()?)
+                }
                 b"SENT-BY" => params.sent_by = Some(value()?.try_into()?),
                 b"CN" => params.common_name = Some(value()?.try_into()?),
                 b"DIR" => params.directory = Some(value()?.try_into()?),
@@ -109,6 +118,7 @@ pub struct OrgParams {
 
 impl TryFrom<&[u8]> for OrgParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
@@ -153,6 +163,7 @@ struct RecurrenceParams {
 
 impl TryFrom<&[u8]> for RecurrenceParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
@@ -197,6 +208,7 @@ struct RelatedToParams {
 
 impl TryFrom<&[u8]> for RelatedToParams {
     type Error = ParseError;
+
     fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
         let mut params = Self::default();
         for segment in param_segments(v) {
